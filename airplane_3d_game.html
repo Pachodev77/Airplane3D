@@ -648,22 +648,48 @@
         }
 
         function createHighway(x, z, length, width, rotation) {
-            const roadGeometry = new THREE.PlaneGeometry(length, width);
-            const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x444444 });
+            // Aumentar ligeramente el ancho para que las carreteras se superpongan correctamente
+            const overlapMargin = 0.5; // Pequeño margen para evitar huecos
+            
+            // Crear la carretera principal
+            const roadGeometry = new THREE.PlaneGeometry(length + overlapMargin, width + overlapMargin);
+            const roadMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x444444,
+                depthWrite: true
+            });
             const road = new THREE.Mesh(roadGeometry, roadMaterial);
             road.rotation.x = -Math.PI / 2;
             road.rotation.z = rotation;
-            road.position.set(x, -48.8, z);  // Roads at y = -48.8 (1.2 units above ground)
+            road.position.set(x, -48.5, z);  // Carretera principal más alta
             scene.add(road);
             
-            // Líneas divisorias
-            const lineGeometry = new THREE.PlaneGeometry(length, 2);
-            const lineMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
-            const centerLine = new THREE.Mesh(lineGeometry, lineMaterial);
-            centerLine.rotation.x = -Math.PI / 2;
-            centerLine.rotation.z = rotation;
-            centerLine.position.set(x, -48.7, z);  // Road lines at y = -48.7 (1.3 units above ground)
-            scene.add(centerLine);
+            // Líneas divisorias solo en carreteras principales
+            if (width >= 30) { // Solo para carreteras anchas (principales)
+                const lineSpacing = 50; // Espacio entre líneas
+                const lineCount = Math.floor(length / lineSpacing);
+                const lineLength = lineSpacing * 0.8; // Longitud de la línea (80% del espacio)
+                
+                for (let i = 0; i < lineCount; i++) {
+                    const lineGeometry = new THREE.PlaneGeometry(lineLength, 2);
+                    const lineMaterial = new THREE.MeshLambertMaterial({ 
+                        color: 0xFFFFFF,
+                        depthWrite: false // Evitar problemas de profundidad
+                    });
+                    const line = new THREE.Mesh(lineGeometry, lineMaterial);
+                    line.rotation.x = -Math.PI / 2;
+                    line.rotation.z = rotation;
+                    
+                    // Posicionar la línea a lo largo de la carretera
+                    const linePos = (i / lineCount - 0.5) * length * 0.9; // 90% de la longitud para margen
+                    line.position.set(
+                        x + Math.cos(rotation + Math.PI/2) * linePos,
+                        -48.4, // Ligeramente por encima de la carretera
+                        z + Math.sin(rotation + Math.PI/2) * linePos
+                    );
+                    
+                    scene.add(line);
+                }
+            }
         }
 
         function createPort(x, z, size) {
@@ -1006,30 +1032,88 @@
             // Crear una curva suave a través de los puntos
             const curve = new THREE.CatmullRomCurve3(points);
             
-            // Crear la geometría del río usando la curva
-            const riverGeometry = new THREE.TubeGeometry(curve, segments * 2, riverWidth / 2, 8, false);
+            // Crear la geometría del río plana
+            const riverShape = new THREE.Shape();
+            const riverPoints = curve.getPoints(segments * 2);
+            
+            riverShape.moveTo(riverPoints[0].x, riverPoints[0].z);
+            for (let i = 1; i < riverPoints.length; i++) {
+                riverShape.lineTo(riverPoints[i].x, riverPoints[i].z);
+            }
+            
+            // Crear geometría extruida para dar profundidad al río
+            const riverGeometry = new THREE.ExtrudeGeometry(riverShape, {
+                depth: 5,
+                bevelEnabled: false
+            });
+            riverGeometry.rotateX(-Math.PI / 2);
+            
             const riverMaterial = new THREE.MeshLambertMaterial({ 
-                color: 0x4169E1,
+                color: 0x1E90FF, // Azul más claro en la superficie
                 transparent: true,
                 opacity: 0.8,
                 side: THREE.DoubleSide
             });
             
             const river = new THREE.Mesh(riverGeometry, riverMaterial);
+            river.position.y = -49.8; // Debajo del nivel del suelo
             scene.add(river);
             
-            // Añadir orillas al río
-            const bankGeometry = new THREE.TubeGeometry(curve, segments * 2, riverWidth, 8, false);
+            // Crear superficie del río al nivel del suelo
+            const riverSurfaceGeometry = new THREE.ShapeGeometry(riverShape);
+            riverSurfaceGeometry.rotateX(-Math.PI / 2);
+            const riverSurface = new THREE.Mesh(
+                riverSurfaceGeometry,
+                new THREE.MeshLambertMaterial({
+                    color: 0x1E90FF,
+                    transparent: true,
+                    opacity: 0.8
+                })
+            );
+            riverSurface.position.y = -49.5; // Nivel del suelo
+            scene.add(riverSurface);
+            
+            // Añadir orillas al río (más anchas y con transición suave)
+            const bankShape = new THREE.Shape();
+            const bankOuterPoints = [];
+            
+            // Crear puntos para la orilla exterior
+            for (let i = 0; i < riverPoints.length; i++) {
+                const point = riverPoints[i];
+                const nextPoint = riverPoints[(i + 1) % riverPoints.length];
+                const dir = new THREE.Vector2(
+                    nextPoint.z - point.z,
+                    -(nextPoint.x - point.x)
+                ).normalize();
+                
+                // Añadir puntos para la orilla exterior
+                const bankWidth = riverWidth * (0.6 + Math.random() * 0.4);
+                bankOuterPoints.push(new THREE.Vector2(
+                    point.x + dir.x * bankWidth,
+                    point.z + dir.y * bankWidth
+                ));
+            }
+            
+            // Crear la forma de la orilla
+            bankShape.moveTo(bankOuterPoints[0].x, bankOuterPoints[0].y);
+            for (let i = 1; i < bankOuterPoints.length; i++) {
+                bankShape.lineTo(bankOuterPoints[i].x, bankOuterPoints[i].y);
+            }
+            
+            // Crear la geometría de la orilla
+            const bankGeometry = new THREE.ExtrudeGeometry(bankShape, {
+                depth: 1,
+                bevelEnabled: false
+            });
+            bankGeometry.rotateX(-Math.PI / 2);
+            
             const bankMaterial = new THREE.MeshLambertMaterial({ 
                 color: 0x8B4513, // Color marrón para la orilla
-                transparent: true,
-                opacity: 0.9,
                 side: THREE.DoubleSide
             });
             
             const bank = new THREE.Mesh(bankGeometry, bankMaterial);
-            bank.scale.set(1.1, 1.1, 1.1); // Hacer la orilla ligeramente más grande
-            bank.position.y = -0.1; // Bajar un poco la orilla
+            bank.position.y = -49.4; // Justo por encima del agua
             scene.add(bank);
         }
 
@@ -1063,29 +1147,46 @@
             
             // Rotar para que quede horizontal
             lakeGeometry.rotateX(-Math.PI / 2);
-            lakeGeometry.translate(0, 0, 0);
             
             // Material con gradiente de color para simular profundidad
             const lakeMaterial = new THREE.MeshLambertMaterial({ 
                 color: 0x1E90FF, // Azul más claro en la superficie
                 transparent: true,
                 opacity: 0.7,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
+                depthWrite: true
             });
             
+            // Crear el agua del lago (parte inferior)
             const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
-            lake.position.set(centerX, -49.2, centerZ); // Un poco más bajo que la superficie
+            lake.position.set(centerX, -49.8, centerZ); // Por debajo del nivel del suelo
             scene.add(lake);
+            
+            // Crear la superficie del lago al nivel del suelo
+            const lakeSurfaceGeometry = new THREE.ShapeGeometry(lakeShape);
+            lakeSurfaceGeometry.rotateX(-Math.PI / 2);
+            const lakeSurface = new THREE.Mesh(
+                lakeSurfaceGeometry,
+                new THREE.MeshLambertMaterial({
+                    color: 0x1E90FF,
+                    transparent: true,
+                    opacity: 0.7,
+                    depthWrite: false
+                })
+            );
+            lakeSurface.position.set(centerX, -49.5, centerZ); // Nivel del suelo
+            scene.add(lakeSurface);
             
             // Añadir orilla con textura de arena
             const shoreGeometry = new THREE.ShapeGeometry(lakeShape);
             shoreGeometry.rotateX(-Math.PI / 2);
             const shoreMaterial = new THREE.MeshLambertMaterial({
                 color: 0xD2B48C, // Color arena
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
+                depthWrite: true
             });
             const shore = new THREE.Mesh(shoreGeometry, shoreMaterial);
-            shore.position.set(centerX, -48.7, centerZ); // Justo por encima del agua
+            shore.position.set(centerX, -49.4, centerZ); // Justo por encima del agua
             scene.add(shore);
         }
 
@@ -1110,37 +1211,52 @@
                 }
             }
             
-            // Geometría del agua del estanque
+            // Crear el agua del estanque (parte inferior)
             const pondGeometry = new THREE.ExtrudeGeometry(pondShape, {
                 steps: 1,
                 depth: 5, // Profundidad del estanque
                 bevelEnabled: false
             });
-            
-            // Rotar para que quede horizontal
             pondGeometry.rotateX(-Math.PI / 2);
             
-            // Material con gradiente de color
             const pondMaterial = new THREE.MeshLambertMaterial({ 
                 color: 0x5F9EA0, // Verde azulado
                 transparent: true,
                 opacity: 0.8,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
+                depthWrite: true
             });
             
             const pond = new THREE.Mesh(pondGeometry, pondMaterial);
-            pond.position.set(centerX, -49.0, centerZ);
+            pond.position.set(centerX, -49.8, centerZ); // Por debajo del nivel del suelo
             scene.add(pond);
+            
+            // Crear la superficie del estanque al nivel del suelo
+            const pondSurfaceGeometry = new THREE.ShapeGeometry(pondShape);
+            pondSurfaceGeometry.rotateX(-Math.PI / 2);
+            const pondSurface = new THREE.Mesh(
+                pondSurfaceGeometry,
+                new THREE.MeshLambertMaterial({
+                    color: 0x5F9EA0,
+                    transparent: true,
+                    opacity: 0.8,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                })
+            );
+            pondSurface.position.set(centerX, -49.5, centerZ); // Nivel del suelo
+            scene.add(pondSurface);
             
             // Añadir orilla con vegetación
             const shoreGeometry = new THREE.ShapeGeometry(pondShape);
             shoreGeometry.rotateX(-Math.PI / 2);
             const shoreMaterial = new THREE.MeshLambertMaterial({
                 color: 0x8B4513, // Marrón tierra
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
+                depthWrite: true
             });
             const shore = new THREE.Mesh(shoreGeometry, shoreMaterial);
-            shore.position.set(centerX, -48.7, centerZ);
+            shore.position.set(centerX, -49.4, centerZ); // Justo por encima del agua
             scene.add(shore);
             
             // Añadir algunos lirios o plantas acuáticas
@@ -1155,11 +1271,12 @@
                 const lilyGeometry = new THREE.CircleGeometry(3 + Math.random() * 4, 6);
                 const lilyMaterial = new THREE.MeshLambertMaterial({
                     color: 0x228B22, // Verde oscuro
-                    side: THREE.DoubleSide
+                    side: THREE.DoubleSide,
+                    depthWrite: true
                 });
                 const lily = new THREE.Mesh(lilyGeometry, lilyMaterial);
                 lily.rotation.x = -Math.PI / 2;
-                lily.position.set(lilyX, -48.6, lilyZ);
+                lily.position.set(lilyX, -49.3, lilyZ); // Sobre la superficie del agua
                 scene.add(lily);
             }
         }
