@@ -450,7 +450,7 @@
             const runwayGeometry = new THREE.PlaneGeometry(6000, 100, 1, 1);
             const runway = new THREE.Mesh(runwayGeometry, runwayMaterial);
             runway.rotation.x = -Math.PI / 2;
-            runway.position.y = -49;
+            runway.position.y = -48.5;  // Slightly raised to prevent z-fighting
             scene.add(runway);
             
             // Terreno con textura simple
@@ -461,7 +461,7 @@
             });
             const ground = new THREE.Mesh(groundGeometry, groundMaterial);
             ground.rotation.x = -Math.PI / 2;
-            ground.position.y = -49.5;
+            ground.position.y = -50;  // Ground at y = -50
             scene.add(ground);
             
             // Nubes optimizadas con instancias
@@ -507,19 +507,73 @@
         }
 
         function createBuildings() {
-            // Ciudades principales más grandes
-            createCity(1200, -1800, 120, 140, 1000); // Ciudad principal expandida
-            createCity(-1800, 1200, 90, 100, 800);   // Segunda ciudad grande
-            createCity(2500, 2500, 70, 80, 600);     // Tercera ciudad
-            createCity(-2800, -1000, 80, 90, 700);   // Cuarta ciudad
-            createCity(1500, 3000, 60, 70, 500);     // Quinta ciudad
+            // Definir ubicaciones estratégicas cerca de fuentes de agua
+            const cityLocations = [
+                // Ciudades principales (x, z, buildingCount, maxHeight, spread, nearWater)
+                {x: 1500, z: -2000, count: 120, height: 140, spread: 1000, water: true},
+                {x: -2000, z: 1800, count: 100, height: 120, spread: 900, water: true},
+                {x: 3000, z: 2500, count: 90, height: 100, spread: 800, water: true},
+                {x: -3000, z: -1500, count: 80, height: 110, spread: 850, water: true},
+                {x: 2000, z: 3500, count: 70, height: 90, spread: 750, water: true}
+            ];
             
-            // Muchos más pueblos distribuidos
-            for (let i = 0; i < 35; i++) {
-                const x = (Math.random() - 0.5) * 10000;
-                const z = (Math.random() - 0.5) * 10000;
-                const size = Math.random() * 25 + 12;
+            // Crear ciudades principales
+            cityLocations.forEach(loc => {
+                // Ajustar posición para que esté cerca del agua si es necesario
+                if (loc.water) {
+                    // Añadir variación a la posición para que no estén todas en el mismo lugar
+                    const offsetX = (Math.random() - 0.5) * 500;
+                    const offsetZ = (Math.random() - 0.5) * 500;
+                    createCity(loc.x + offsetX, loc.z + offsetZ, loc.count, loc.height, loc.spread);
+                    
+                    // Crear un puerto o área costera
+                    createPort(loc.x + offsetX, loc.z + offsetZ, loc.spread * 0.4);
+                } else {
+                    createCity(loc.x, loc.z, loc.count, loc.height, loc.spread);
+                }
+            });
+            
+            // Crear ciudades medianas (más pequeñas)
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const distance = 3000 + Math.random() * 1000;
+                const x = Math.cos(angle) * distance;
+                const z = Math.sin(angle) * distance * 0.8; // Aplanar un poco la elipse
+                const size = Math.floor(Math.random() * 15) + 20; // 20-35 edificios
+                createCity(x, z, size, 40 + Math.random() * 30, 300 + Math.random() * 200);
+            }
+            
+            // Crear pueblos pequeños
+            for (let i = 0; i < 25; i++) {
+                // Distribuir pueblos más densamente cerca de las carreteras principales
+                let x, z;
+                if (Math.random() > 0.3) {
+                    // 70% de probabilidad de estar cerca de una carretera principal
+                    const roadAngle = Math.floor(Math.random() * 4) * (Math.PI / 2);
+                    const roadDistance = (Math.random() * 2 - 1) * 1000;
+                    x = Math.cos(roadAngle) * roadDistance;
+                    z = Math.sin(roadAngle) * roadDistance;
+                    // Añadir variación aleatoria
+                    x += (Math.random() - 0.5) * 800;
+                    z += (Math.random() - 0.5) * 800;
+                } else {
+                    // 30% de probabilidad de estar en ubicación aleatoria
+                    x = (Math.random() - 0.5) * 8000;
+                    z = (Math.random() - 0.5) * 8000;
+                }
+                
+                const size = Math.floor(Math.random() * 8) + 5; // 5-13 edificios
                 createTown(x, z, size);
+                
+                // A veces añadir un pequeño lago o estanque cerca del pueblo
+                if (Math.random() > 0.7) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = 50 + Math.random() * 100;
+                    createPond(
+                        x + Math.cos(angle) * distance,
+                        z + Math.sin(angle) * distance
+                    );
+                }
             }
             
             // Crear red de carreteras principales
@@ -555,24 +609,38 @@
         }
 
         function createRoadNetwork() {
-            // Carretera principal horizontal (Este-Oeste)
-            createHighway(-6000, 0, 12000, 40, 0);
-            createHighway(-6000, 1500, 12000, 35, 0);
-            createHighway(-6000, -1500, 12000, 35, 0);
+            // Carreteras principales en una cuadrícula lógica
+            const gridSize = 2000; // Distancia entre carreteras principales
+            const worldSize = 10000; // Tamaño total del mundo
             
-            // Carretera principal vertical (Norte-Sur)
-            createHighway(0, -6000, 35, 12000, Math.PI/2);
-            createHighway(1500, -6000, 30, 12000, Math.PI/2);
-            createHighway(-1500, -6000, 30, 12000, Math.PI/2);
+            // Carreteras horizontales (Este-Oeste)
+            for (let z = -worldSize/2; z <= worldSize/2; z += gridSize) {
+                const width = (z % (gridSize * 2) === 0) ? 40 : 30; // Alternar entre carreteras principales y secundarias
+                createHighway(-worldSize/2, z, worldSize, width, 0);
+                
+                // Añadir carreteras más pequeñas entre las principales
+                if (z < worldSize/2) {
+                    const smallRoadCount = 3; // Número de carreteras pequeñas entre principales
+                    for (let i = 1; i <= smallRoadCount; i++) {
+                        const smallZ = z + (i * gridSize) / (smallRoadCount + 1);
+                        createHighway(-worldSize/2, smallZ, worldSize, 20, 0);
+                    }
+                }
+            }
             
-            // Carreteras secundarias - Red densa
-            for (let i = 0; i < 40; i++) {
-                const startX = (Math.random() - 0.5) * 10000;
-                const startZ = (Math.random() - 0.5) * 10000;
-                const length = Math.random() * 2000 + 1000;
-                const width = Math.random() * 15 + 20;
-                const rotation = Math.random() * Math.PI;
-                createHighway(startX, startZ, length, width, rotation);
+            // Carreteras verticales (Norte-Sur)
+            for (let x = -worldSize/2; x <= worldSize/2; x += gridSize) {
+                const width = (x % (gridSize * 2) === 0) ? 40 : 30;
+                createHighway(x, -worldSize/2, worldSize, width, Math.PI/2);
+                
+                // Añadir carreteras más pequeñas entre las principales
+                if (x < worldSize/2) {
+                    const smallRoadCount = 3;
+                    for (let i = 1; i <= smallRoadCount; i++) {
+                        const smallX = x + (i * gridSize) / (smallRoadCount + 1);
+                        createHighway(smallX, -worldSize/2, worldSize, 20, Math.PI/2);
+                    }
+                }
             }
             
             // Carreteras urbanas conectando ciudades
@@ -585,7 +653,7 @@
             const road = new THREE.Mesh(roadGeometry, roadMaterial);
             road.rotation.x = -Math.PI / 2;
             road.rotation.z = rotation;
-            road.position.set(x, -48.8, z);
+            road.position.set(x, -48.8, z);  // Roads at y = -48.8 (1.2 units above ground)
             scene.add(road);
             
             // Líneas divisorias
@@ -594,17 +662,125 @@
             const centerLine = new THREE.Mesh(lineGeometry, lineMaterial);
             centerLine.rotation.x = -Math.PI / 2;
             centerLine.rotation.z = rotation;
-            centerLine.position.set(x, -48.7, z);
+            centerLine.position.set(x, -48.7, z);  // Road lines at y = -48.7 (1.3 units above ground)
             scene.add(centerLine);
         }
 
+        function createPort(x, z, size) {
+            // Crear área del puerto
+            const portGeometry = new THREE.PlaneGeometry(size * 2, size * 2);
+            const portMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x8B4513, // Marrón para el área del puerto
+                side: THREE.DoubleSide
+            });
+            const port = new THREE.Mesh(portGeometry, portMaterial);
+            port.rotation.x = -Math.PI / 2;
+            port.position.set(x, -48.8, z);
+            scene.add(port);
+            
+            // Añadir muelles
+            const dockCount = 3 + Math.floor(Math.random() * 4);
+            for (let i = 0; i < dockCount; i++) {
+                const dockGeometry = new THREE.BoxGeometry(100, 5, 20);
+                const dockMaterial = new THREE.MeshLambertMaterial({ color: 0x696969 });
+                const dock = new THREE.Mesh(dockGeometry, dockMaterial);
+                const angle = (i / dockCount) * Math.PI * 2;
+                const distance = size * 0.7;
+                dock.position.set(
+                    x + Math.cos(angle) * distance,
+                    -46.5, // Un poco más alto que el agua
+                    z + Math.sin(angle) * distance
+                );
+                dock.rotation.y = -angle + Math.PI/2;
+                scene.add(dock);
+                
+                // Añadir barcos pequeños
+                if (Math.random() > 0.3) {
+                    const boat = createBoat();
+                    boat.position.set(
+                        x + Math.cos(angle) * (distance - 30),
+                        -48.5,
+                        z + Math.sin(angle) * (distance - 30)
+                    );
+                    boat.rotation.y = -angle;
+                    scene.add(boat);
+                }
+            }
+        }
+        
+        function createBoat() {
+            const boat = new THREE.Group();
+            
+            // Casco del barco
+            const hullGeometry = new THREE.CylinderGeometry(5, 10, 30, 8, 1, true);
+            hullGeometry.rotateZ(Math.PI / 2);
+            const hullMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const hull = new THREE.Mesh(hullGeometry, hullMaterial);
+            hull.position.y = 1;
+            boat.add(hull);
+            
+            // Cubierta
+            const deckGeometry = new THREE.BoxGeometry(25, 2, 10);
+            const deckMaterial = new THREE.MeshLambertMaterial({ color: 0x5D4037 });
+            const deck = new THREE.Mesh(deckGeometry, deckMaterial);
+            deck.position.y = 3;
+            boat.add(deck);
+            
+            // Velas
+            const sailGeometry = new THREE.PlaneGeometry(15, 20);
+            const sailMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xF5F5F5,
+                side: THREE.DoubleSide
+            });
+            const sail1 = new THREE.Mesh(sailGeometry, sailMaterial);
+            sail1.position.set(0, 15, 0);
+            boat.add(sail1);
+            
+            return boat;
+        }
+        
         function createUrbanRoads() {
-            const cities = [
-                {x: 1200, z: -1800}, {x: -1800, z: 1200}, {x: 2500, z: 2500}, 
-                {x: -2800, z: -1000}, {x: 1500, z: 3000}
+            // Obtener ubicaciones de las ciudades principales
+            const mainCities = [
+                {x: 1500, z: -2000}, 
+                {x: -2000, z: 1800}, 
+                {x: 3000, z: 2500},
+                {x: -3000, z: -1500},
+                {x: 2000, z: 3500}
             ];
             
-            // Conectar ciudades con carreteras
+            // Conectar ciudades principales en un anillo
+            for (let i = 0; i < mainCities.length; i++) {
+                const current = mainCities[i];
+                const next = mainCities[(i + 1) % mainCities.length];
+                
+                // Crear carretera entre ciudades
+                const dx = next.x - current.x;
+                const dz = next.z - current.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                const angle = Math.atan2(dz, dx);
+                
+                createHighway(
+                    current.x + Math.cos(angle) * distance * 0.5,
+                    current.z + Math.sin(angle) * distance * 0.5,
+                    distance,
+                    40, // Ancho de la carretera
+                    angle + Math.PI/2 // Rotación correcta
+                );
+                
+                // Añadir rampas de entrada/salida
+                const rampLength = 100;
+                const rampWidth = 20;
+                const rampAngle = angle + Math.PI/4; // Ángulo de 45 grados
+                
+                createHighway(
+                    current.x + Math.cos(rampAngle) * rampLength * 0.5,
+                    current.z + Math.sin(rampAngle) * rampLength * 0.5,
+                    rampLength,
+                    rampWidth,
+                    rampAngle + Math.PI/2
+                );
+            }
             for (let i = 0; i < cities.length; i++) {
                 for (let j = i + 1; j < cities.length; j++) {
                     if (Math.random() > 0.3) continue; // No conectar todas
@@ -804,54 +980,180 @@
         }
 
         function createRiver() {
-            const segments = 20;
-            const riverWidth = 60;
+            const segments = 50; // Más segmentos para un flujo más suave
+            const riverWidth = 80; // Ancho más consistente
+            const points = [];
             
-            for (let i = 0; i < segments; i++) {
-                const progress = i / segments;
-                const x = -5000 + progress * 10000 + Math.sin(progress * Math.PI * 3) * 1000;
-                const z = -2000 + Math.sin(progress * Math.PI * 2) * 800;
+            // Crear puntos de control para una curva suave
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+                // Curva más suave y natural con ruido Perlin simple
+                const noise = (t) => Math.sin(t * Math.PI * 4) * 0.5 + Math.sin(t * Math.PI * 8) * 0.25;
                 
-                const riverGeometry = new THREE.PlaneGeometry(200, riverWidth);
-                const riverMaterial = new THREE.MeshLambertMaterial({ 
-                    color: 0x4169E1,
-                    transparent: true,
-                    opacity: 0.8
-                });
-                const riverSegment = new THREE.Mesh(riverGeometry, riverMaterial);
-                riverSegment.rotation.x = -Math.PI / 2;
-                riverSegment.rotation.z = Math.atan2(Math.cos(progress * Math.PI * 3), 1) * 0.5;
-                riverSegment.position.set(x, -49, z);
-                scene.add(riverSegment);
+                const x = -4500 + t * 9000 + Math.sin(t * Math.PI * 2) * 1200 * noise(t);
+                const z = -3000 * (1 - t) + 3000 * t + Math.cos(t * Math.PI * 3) * 1000 * noise(t + 0.5);
+                points.push(new THREE.Vector3(x, -48.9, z));
             }
+            
+            // Crear una curva suave a través de los puntos
+            const curve = new THREE.CatmullRomCurve3(points);
+            
+            // Crear la geometría del río usando la curva
+            const riverGeometry = new THREE.TubeGeometry(curve, segments * 2, riverWidth / 2, 8, false);
+            const riverMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x4169E1,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            
+            const river = new THREE.Mesh(riverGeometry, riverMaterial);
+            scene.add(river);
+            
+            // Añadir orillas al río
+            const bankGeometry = new THREE.TubeGeometry(curve, segments * 2, riverWidth, 8, false);
+            const bankMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x8B4513, // Color marrón para la orilla
+                transparent: true,
+                opacity: 0.9,
+                side: THREE.DoubleSide
+            });
+            
+            const bank = new THREE.Mesh(bankGeometry, bankMaterial);
+            bank.scale.set(1.1, 1.1, 1.1); // Hacer la orilla ligeramente más grande
+            bank.position.y = -0.1; // Bajar un poco la orilla
+            scene.add(bank);
         }
 
         function createLake(centerX, centerZ) {
-            const lakeRadius = Math.random() * 80 + 60;
-            const lakeGeometry = new THREE.CircleGeometry(lakeRadius, 12);
-            const lakeMaterial = new THREE.MeshLambertMaterial({ 
-                color: 0x4169E1,
-                transparent: true,
-                opacity: 0.7
+            // Crear una forma de lago más orgánica
+            const lakeShape = new THREE.Shape();
+            const radius = Math.random() * 80 + 60;
+            const points = 12 + Math.floor(Math.random() * 8); // 12-20 puntos
+            
+            // Crear puntos para un contorno irregular
+            for (let i = 0; i <= points; i++) {
+                const angle = (i / points) * Math.PI * 2;
+                const variation = 0.7 + Math.random() * 0.6; // 0.7-1.3
+                const pointRadius = radius * variation;
+                const x = Math.cos(angle) * pointRadius;
+                const y = Math.sin(angle) * pointRadius;
+                
+                if (i === 0) {
+                    lakeShape.moveTo(x, y);
+                } else {
+                    lakeShape.lineTo(x, y);
+                }
+            }
+            
+            // Crear geometría extruida para dar profundidad
+            const lakeGeometry = new THREE.ExtrudeGeometry(lakeShape, {
+                steps: 1,
+                depth: 10, // Profundidad del lago
+                bevelEnabled: false
             });
+            
+            // Rotar para que quede horizontal
+            lakeGeometry.rotateX(-Math.PI / 2);
+            lakeGeometry.translate(0, 0, 0);
+            
+            // Material con gradiente de color para simular profundidad
+            const lakeMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x1E90FF, // Azul más claro en la superficie
+                transparent: true,
+                opacity: 0.7,
+                side: THREE.DoubleSide
+            });
+            
             const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
-            lake.rotation.x = -Math.PI / 2;
-            lake.position.set(centerX, -48.5, centerZ);
+            lake.position.set(centerX, -49.2, centerZ); // Un poco más bajo que la superficie
             scene.add(lake);
+            
+            // Añadir orilla con textura de arena
+            const shoreGeometry = new THREE.ShapeGeometry(lakeShape);
+            shoreGeometry.rotateX(-Math.PI / 2);
+            const shoreMaterial = new THREE.MeshLambertMaterial({
+                color: 0xD2B48C, // Color arena
+                side: THREE.DoubleSide
+            });
+            const shore = new THREE.Mesh(shoreGeometry, shoreMaterial);
+            shore.position.set(centerX, -48.7, centerZ); // Justo por encima del agua
+            scene.add(shore);
         }
 
         function createPond(centerX, centerZ) {
-            const pondRadius = Math.random() * 20 + 15;
-            const pondGeometry = new THREE.CircleGeometry(pondRadius, 8);
-            const pondMaterial = new THREE.MeshLambertMaterial({ 
-                color: 0x4682B4,
-                transparent: true,
-                opacity: 0.6
+            // Crear una forma de estanque más orgánica
+            const pondShape = new THREE.Shape();
+            const radius = Math.random() * 20 + 15;
+            const points = 8 + Math.floor(Math.random() * 4); // 8-12 puntos
+            
+            // Crear puntos para un contorno irregular
+            for (let i = 0; i <= points; i++) {
+                const angle = (i / points) * Math.PI * 2;
+                const variation = 0.6 + Math.random() * 0.8; // 0.6-1.4 (más irregular)
+                const pointRadius = radius * variation;
+                const x = Math.cos(angle) * pointRadius;
+                const y = Math.sin(angle) * pointRadius;
+                
+                if (i === 0) {
+                    pondShape.moveTo(x, y);
+                } else {
+                    pondShape.lineTo(x, y);
+                }
+            }
+            
+            // Geometría del agua del estanque
+            const pondGeometry = new THREE.ExtrudeGeometry(pondShape, {
+                steps: 1,
+                depth: 5, // Profundidad del estanque
+                bevelEnabled: false
             });
+            
+            // Rotar para que quede horizontal
+            pondGeometry.rotateX(-Math.PI / 2);
+            
+            // Material con gradiente de color
+            const pondMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x5F9EA0, // Verde azulado
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            
             const pond = new THREE.Mesh(pondGeometry, pondMaterial);
-            pond.rotation.x = -Math.PI / 2;
-            pond.position.set(centerX, -48.8, centerZ);
+            pond.position.set(centerX, -49.0, centerZ);
             scene.add(pond);
+            
+            // Añadir orilla con vegetación
+            const shoreGeometry = new THREE.ShapeGeometry(pondShape);
+            shoreGeometry.rotateX(-Math.PI / 2);
+            const shoreMaterial = new THREE.MeshLambertMaterial({
+                color: 0x8B4513, // Marrón tierra
+                side: THREE.DoubleSide
+            });
+            const shore = new THREE.Mesh(shoreGeometry, shoreMaterial);
+            shore.position.set(centerX, -48.7, centerZ);
+            scene.add(shore);
+            
+            // Añadir algunos lirios o plantas acuáticas
+            const lilyCount = 3 + Math.floor(Math.random() * 5);
+            for (let i = 0; i < lilyCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * (radius * 0.7);
+                const lilyX = centerX + Math.cos(angle) * distance;
+                const lilyZ = centerZ + Math.sin(angle) * distance;
+                
+                // Planta acuática simple
+                const lilyGeometry = new THREE.CircleGeometry(3 + Math.random() * 4, 6);
+                const lilyMaterial = new THREE.MeshLambertMaterial({
+                    color: 0x228B22, // Verde oscuro
+                    side: THREE.DoubleSide
+                });
+                const lily = new THREE.Mesh(lilyGeometry, lilyMaterial);
+                lily.rotation.x = -Math.PI / 2;
+                lily.position.set(lilyX, -48.6, lilyZ);
+                scene.add(lily);
+            }
         }
 
         function createScatteredVegetation() {
