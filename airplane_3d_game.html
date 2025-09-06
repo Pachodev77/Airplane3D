@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Avión 3D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(to bottom, #87CEEB 0%, #98FB98 100%);
+            font-family: Arial, sans-serif;
+            touch-action: none;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .joystick {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            border: 3px solid rgba(255, 255, 255, 0.9);
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 100;
+        }
+        
+        .joystick::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 2px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.6);
+            transform: translate(-50%, -50%);
+            z-index: 1;
+        }
+        
+        .joystick::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 60px;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.6);
+            transform: translate(-50%, -50%);
+            z-index: 1;
+        }
+        
+        .joystick-handle {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 3px solid #333;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            z-index: 3;
+            user-select: none;
+        }
+        
+        .joystick-handle:active {
+            cursor: grabbing;
+            background: rgba(255, 255, 255, 1);
+        }
+        
+        .joystick-label {
+            position: absolute;
+            bottom: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 13px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            text-align: center;
+            white-space: nowrap;
+            background: rgba(0,0,0,0.5);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .control-arrows {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 9px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 2;
+        }
+        
+        .arrow-up { top: 8px; left: 50%; transform: translateX(-50%); }
+        .arrow-down { bottom: 8px; left: 50%; transform: translateX(-50%); }
+        .arrow-left { left: 8px; top: 50%; transform: translateY(-50%); }
+        .arrow-right { right: 8px; top: 50%; transform: translateY(-50%); }
+        
+        #leftJoystick {
+            bottom: 80px;
+            left: 40px;
+        }
+        
+        #rightJoystick {
+            bottom: 80px;
+            right: 40px;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            background: rgba(0, 0, 0, 0.4);
+            padding: 12px 18px;
+            border-radius: 12px;
+            z-index: 100;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+        
+        .altitude-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            background: rgba(0, 0, 0, 0.4);
+            padding: 12px 18px;
+            border-radius: 12px;
+            z-index: 100;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+        
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="canvas"></canvas>
+        
+        <div id="leftJoystick" class="joystick">
+            <div class="joystick-handle"></div>
+            <div class="control-arrows arrow-up">SUBIR</div>
+            <div class="control-arrows arrow-down">BAJAR</div>
+            <div class="control-arrows arrow-left">◀</div>
+            <div class="control-arrows arrow-right">▶</div>
+            <div class="joystick-label">ELEVACIÓN</div>
+        </div>
+        
+        <div id="rightJoystick" class="joystick">
+            <div class="joystick-handle"></div>
+            <div class="control-arrows arrow-up">+POTENCIA</div>
+            <div class="control-arrows arrow-down">-POTENCIA</div>
+            <div class="control-arrows arrow-left">◀ GIRO</div>
+            <div class="control-arrows arrow-right">GIRO ▶</div>
+            <div class="joystick-label">POTENCIA Y DIRECCIÓN</div>
+        </div>
+        
+        <div class="info-panel">
+            <div>VELOCIDAD: <span id="speedValue">0</span> km/h</div>
+            <div>POTENCIA: <span id="thrustValue">0</span>%</div>
+            <div>ESTADO: <span id="flightStatus">PARADO</span></div>
+        </div>
+        
+        <div class="altitude-panel">
+            <div>ALTURA: <span id="altitudeValue">0</span>m</div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Variables globales principales
+        let scene, camera, airplane;
+        let velocity = { x: 0, y: 0, z: 0 };
+        let rotation = { x: 0, y: 0, z: 0 };
+        let smoothElevation = 0;  // Initialize smoothElevation
+        let smoothRotationY = 0;  // Initialize smoothRotationY
+        let smoothBank = 0;      // Initialize smoothBank for banking animation
+        let smoothPitch = 0;     // Initialize smoothPitch for pitch animation
+        let clouds = [];
+        let isOnGround = true;
+        let currentThrust = 0;
+
+        // Sistema de joysticks completamente rediseñado
+        const joystickState = {
+            left: { x: 0, y: 0, active: false, touchId: null },
+            right: { x: 0, y: 0, active: false, touchId: null }
+        };
+
+        const activeTouches = new Map();
+        let leftHandle, rightHandle, leftContainer, rightContainer;
+
+        // Inicializar elementos DOM
+        function initDOM() {
+            leftContainer = document.getElementById('leftJoystick');
+            rightContainer = document.getElementById('rightJoystick');
+            leftHandle = leftContainer?.querySelector('.joystick-handle');
+            rightHandle = rightContainer?.querySelector('.joystick-handle');
+        }
+
+        // Sistema de joysticks corregido y consistente
+        function initJoystickSystem() {
+            initDOM();
+
+            function updateJoystickVisual(side, deltaX, deltaY) {
+                const maxRadius = 35;
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                
+                if (distance > maxRadius) {
+                    deltaX = (deltaX / distance) * maxRadius;
+                    deltaY = (deltaY / distance) * maxRadius;
+                }
+                
+                joystickState[side].x = deltaX / maxRadius;
+                joystickState[side].y = -deltaY / maxRadius;
+                
+                const handle = side === 'left' ? leftHandle : rightHandle;
+                if (handle) {
+                    handle.style.transform = `translate(-50%, -50%) translate(${deltaX}px, ${deltaY}px)`;
+                    handle.style.background = 'rgba(255, 255, 255, 1)';
+                    handle.style.borderColor = '#0066cc';
+                }
+            }
+
+            function resetJoystick(side) {
+                joystickState[side].x = 0;
+                joystickState[side].y = 0;
+                joystickState[side].active = false;
+                joystickState[side].touchId = null;
+                
+                const handle = side === 'left' ? leftHandle : rightHandle;
+                if (handle) {
+                    handle.style.transform = 'translate(-50%, -50%)';
+                    handle.style.background = 'rgba(255, 255, 255, 0.95)';
+                    handle.style.borderColor = '#333';
+                }
+            }
+
+            function getJoystickFromPoint(x, y) {
+                const leftRect = leftContainer?.getBoundingClientRect();
+                const rightRect = rightContainer?.getBoundingClientRect();
+                
+                if (leftRect) {
+                    const leftDist = Math.sqrt(
+                        Math.pow(x - (leftRect.left + leftRect.width/2), 2) + 
+                        Math.pow(y - (leftRect.top + leftRect.height/2), 2)
+                    );
+                    if (leftDist <= leftRect.width/2) return 'left';
+                }
+                
+                if (rightRect) {
+                    const rightDist = Math.sqrt(
+                        Math.pow(x - (rightRect.left + rightRect.width/2), 2) + 
+                        Math.pow(y - (rightRect.top + rightRect.height/2), 2)
+                    );
+                    if (rightDist <= rightRect.width/2) return 'right';
+                }
+                
+                return null;
+            }
+
+            // Touch Events - Completamente reescrito
+            document.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                
+                for (let touch of e.touches) {
+                    if (activeTouches.has(touch.identifier)) continue;
+                    
+                    const side = getJoystickFromPoint(touch.clientX, touch.clientY);
+                    if (!side || joystickState[side].active) continue;
+                    
+                    joystickState[side].active = true;
+                    joystickState[side].touchId = touch.identifier;
+                    activeTouches.set(touch.identifier, side);
+                }
+            }, { passive: false });
+
+            document.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                
+                for (let touch of e.touches) {
+                    const side = activeTouches.get(touch.identifier);
+                    if (!side) continue;
+                    
+                    const container = side === 'left' ? leftContainer : rightContainer;
+                    const rect = container?.getBoundingClientRect();
+                    if (!rect) continue;
+                    
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    const deltaX = touch.clientX - centerX;
+                    const deltaY = touch.clientY - centerY;
+                    
+                    updateJoystickVisual(side, deltaX, deltaY);
+                }
+            }, { passive: false });
+
+            document.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                
+                // Encontrar touches que terminaron
+                const endedTouches = [];
+                activeTouches.forEach((side, touchId) => {
+                    let stillActive = false;
+                    for (let touch of e.touches) {
+                        if (touch.identifier === touchId) {
+                            stillActive = true;
+                            break;
+                        }
+                    }
+                    if (!stillActive) {
+                        endedTouches.push({ touchId, side });
+                    }
+                });
+                
+                // Resetear joysticks terminados
+                endedTouches.forEach(({ touchId, side }) => {
+                    activeTouches.delete(touchId);
+                    resetJoystick(side);
+                });
+            }, { passive: false });
+
+            // Mouse Events para desktop
+            let mouseJoystick = null;
+            
+            document.addEventListener('mousedown', (e) => {
+                const side = getJoystickFromPoint(e.clientX, e.clientY);
+                if (!side || joystickState[side].active) return;
+                
+                mouseJoystick = side;
+                joystickState[side].active = true;
+                joystickState[side].touchId = 'mouse';
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!mouseJoystick) return;
+                
+                const container = mouseJoystick === 'left' ? leftContainer : rightContainer;
+                const rect = container?.getBoundingClientRect();
+                if (!rect) return;
+                
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const deltaX = e.clientX - centerX;
+                const deltaY = e.clientY - centerY;
+                
+                updateJoystickVisual(mouseJoystick, deltaX, deltaY);
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (mouseJoystick) {
+                    resetJoystick(mouseJoystick);
+                    mouseJoystick = null;
+                }
+            });
+        }
+
+        // Crear avión
+        function createAirplane() {
+            airplane = new THREE.Group();
+            
+            // Fuselaje principal
+            const fuselageGeometry = new THREE.CylinderGeometry(0.4, 0.9, 7, 10);
+            const fuselageMaterial = new THREE.MeshLambertMaterial({ color: 0x4169E1 });
+            const fuselage = new THREE.Mesh(fuselageGeometry, fuselageMaterial);
+            fuselage.rotation.x = Math.PI / 2;
+            airplane.add(fuselage);
+            
+            // Alas principales
+            const wingGeometry = new THREE.BoxGeometry(14, 0.4, 2.5);
+            const wingMaterial = new THREE.MeshLambertMaterial({ color: 0x1E90FF });
+            const wings = new THREE.Mesh(wingGeometry, wingMaterial);
+            wings.position.set(0, 0, -0.8);
+            airplane.add(wings);
+            
+            // Cola vertical
+            const tailGeometry = new THREE.BoxGeometry(2, 4, 0.3);
+            const tail = new THREE.Mesh(tailGeometry, wingMaterial);
+            tail.position.set(0, 2, -3);
+            airplane.add(tail);
+            
+            // Cola horizontal
+            const hTailGeometry = new THREE.BoxGeometry(5, 0.3, 1.2);
+            const hTail = new THREE.Mesh(hTailGeometry, wingMaterial);
+            hTail.position.set(0, 0, -3);
+            airplane.add(hTail);
+            
+            // Hélice
+            const propGeometry = new THREE.BoxGeometry(0.15, 5, 0.15);
+            const propMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const propeller = new THREE.Mesh(propGeometry, propMaterial);
+            propeller.position.set(0, 0, 3.2);
+            propeller.name = 'propeller';
+            airplane.add(propeller);
+            
+            // Posición inicial en la pista
+            airplane.position.set(0, -41, 0);
+            airplane.rotation.y = 0;
+            scene.add(airplane);
+        }
+
+        // Crear mundo optimizado al máximo
+        function createWorld() {
+            // Textura de pista con líneas incluida (más eficiente que geometrías separadas)
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 6000;
+            canvas.height = 100;
+            
+            // Dibujar pista
+            context.fillStyle = '#555555';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Dibujar líneas de pista
+            context.fillStyle = '#FFFFFF';
+            for (let i = 0; i < canvas.width; i += 200) {
+                context.fillRect(i, 47.5, 60, 5);
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const runwayMaterial = new THREE.MeshBasicMaterial({ 
+                map: texture,
+                side: THREE.DoubleSide
+            });
+            
+            const runwayGeometry = new THREE.PlaneGeometry(6000, 100, 1, 1);
+            const runway = new THREE.Mesh(runwayGeometry, runwayMaterial);
+            runway.rotation.x = -Math.PI / 2;
+            runway.position.y = -49;
+            scene.add(runway);
+            
+            // Terreno con textura simple
+            const groundGeometry = new THREE.PlaneGeometry(12000, 12000, 1, 1);
+            const groundMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x228B22,
+                side: THREE.DoubleSide
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -49.5;
+            scene.add(ground);
+            
+            // Nubes optimizadas con instancias
+            const cloudGeometry = new THREE.SphereGeometry(1, 6, 4);
+            const cloudMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xFFFFFF,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            
+            // Usar instancias de malla para nubes (más eficiente)
+            const cloudCount = 10; // Reducir aún más el número de nubes
+            const cloudParts = 2;  // Menos partes por nube
+            
+            for (let i = 0; i < cloudCount; i++) {
+                const cloud = new THREE.Group();
+                
+                for (let j = 0; j < cloudParts; j++) {
+                    const cloudPart = new THREE.Mesh(cloudGeometry, cloudMaterial);
+                    const scale = Math.random() * 6 + 4;
+                    cloudPart.scale.set(scale, scale, scale);
+                    cloudPart.position.set(
+                        (Math.random() - 0.5) * 20,
+                        (Math.random() - 0.5) * 8,
+                        (Math.random() - 0.5) * 20
+                    );
+                    cloud.add(cloudPart);
+                }
+                
+                cloud.position.set(
+                    (Math.random() - 0.5) * 8000,  // Menor rango de distribución
+                    Math.random() * 150 + 50,      // Más bajas en el cielo
+                    (Math.random() - 0.5) * 8000
+                );
+                
+                clouds.push(cloud);
+                scene.add(cloud);
+            }
+            
+            // Crear ciudades y edificios
+            createBuildings();
+        }
+
+        function createBuildings() {
+            // Ciudades principales más grandes
+            createCity(1200, -1800, 120, 140, 1000); // Ciudad principal expandida
+            createCity(-1800, 1200, 90, 100, 800);   // Segunda ciudad grande
+            createCity(2500, 2500, 70, 80, 600);     // Tercera ciudad
+            createCity(-2800, -1000, 80, 90, 700);   // Cuarta ciudad
+            createCity(1500, 3000, 60, 70, 500);     // Quinta ciudad
+            
+            // Muchos más pueblos distribuidos
+            for (let i = 0; i < 35; i++) {
+                const x = (Math.random() - 0.5) * 10000;
+                const z = (Math.random() - 0.5) * 10000;
+                const size = Math.random() * 25 + 12;
+                createTown(x, z, size);
+            }
+            
+            // Crear red de carreteras principales
+            createRoadNetwork();
+            
+            // Crear muchísimos más bosques
+            for (let i = 0; i < 60; i++) {
+                const x = (Math.random() - 0.5) * 11500;
+                const z = (Math.random() - 0.5) * 11500;
+                const treeCount = Math.random() * 120 + 80;
+                createForest(x, z, treeCount);
+            }
+            
+            // Crear campos de cultivo extensos
+            for (let i = 0; i < 45; i++) {
+                const x = (Math.random() - 0.5) * 11000;
+                const z = (Math.random() - 0.5) * 11000;
+                createFarmField(x, z);
+            }
+            
+            // Crear parques urbanos
+            for (let i = 0; i < 25; i++) {
+                const x = (Math.random() - 0.5) * 8000;
+                const z = (Math.random() - 0.5) * 8000;
+                createPark(x, z);
+            }
+            
+            // Crear ríos y lagos
+            createWaterBodies();
+            
+            // Agregar vegetación dispersa por todo el mapa
+            createScatteredVegetation();
+        }
+
+        function createRoadNetwork() {
+            // Carretera principal horizontal (Este-Oeste)
+            createHighway(-6000, 0, 12000, 40, 0);
+            createHighway(-6000, 1500, 12000, 35, 0);
+            createHighway(-6000, -1500, 12000, 35, 0);
+            
+            // Carretera principal vertical (Norte-Sur)
+            createHighway(0, -6000, 35, 12000, Math.PI/2);
+            createHighway(1500, -6000, 30, 12000, Math.PI/2);
+            createHighway(-1500, -6000, 30, 12000, Math.PI/2);
+            
+            // Carreteras secundarias - Red densa
+            for (let i = 0; i < 40; i++) {
+                const startX = (Math.random() - 0.5) * 10000;
+                const startZ = (Math.random() - 0.5) * 10000;
+                const length = Math.random() * 2000 + 1000;
+                const width = Math.random() * 15 + 20;
+                const rotation = Math.random() * Math.PI;
+                createHighway(startX, startZ, length, width, rotation);
+            }
+            
+            // Carreteras urbanas conectando ciudades
+            createUrbanRoads();
+        }
+
+        function createHighway(x, z, length, width, rotation) {
+            const roadGeometry = new THREE.PlaneGeometry(length, width);
+            const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x444444 });
+            const road = new THREE.Mesh(roadGeometry, roadMaterial);
+            road.rotation.x = -Math.PI / 2;
+            road.rotation.z = rotation;
+            road.position.set(x, -48.8, z);
+            scene.add(road);
+            
+            // Líneas divisorias
+            const lineGeometry = new THREE.PlaneGeometry(length, 2);
+            const lineMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+            const centerLine = new THREE.Mesh(lineGeometry, lineMaterial);
+            centerLine.rotation.x = -Math.PI / 2;
+            centerLine.rotation.z = rotation;
+            centerLine.position.set(x, -48.7, z);
+            scene.add(centerLine);
+        }
+
+        function createUrbanRoads() {
+            const cities = [
+                {x: 1200, z: -1800}, {x: -1800, z: 1200}, {x: 2500, z: 2500}, 
+                {x: -2800, z: -1000}, {x: 1500, z: 3000}
+            ];
+            
+            // Conectar ciudades con carreteras
+            for (let i = 0; i < cities.length; i++) {
+                for (let j = i + 1; j < cities.length; j++) {
+                    if (Math.random() > 0.3) continue; // No conectar todas
+                    
+                    const cityA = cities[i];
+                    const cityB = cities[j];
+                    const midX = (cityA.x + cityB.x) / 2;
+                    const midZ = (cityA.z + cityB.z) / 2;
+                    const distance = Math.sqrt(Math.pow(cityB.x - cityA.x, 2) + Math.pow(cityB.z - cityA.z, 2));
+                    const angle = Math.atan2(cityB.z - cityA.z, cityB.x - cityA.x);
+                    
+                    createHighway(midX, midZ, distance, 25, angle);
+                }
+            }
+        }
+
+        function createFarmField(centerX, centerZ) {
+            const fieldSize = Math.random() * 300 + 200;
+            const fieldType = Math.floor(Math.random() * 4);
+            
+            let fieldColor;
+            switch(fieldType) {
+                case 0: fieldColor = 0x90EE90; break; // Trigo
+                case 1: fieldColor = 0x228B22; break; // Maíz
+                case 2: fieldColor = 0x9ACD32; break; // Soja
+                case 3: fieldColor = 0x32CD32; break; // Pasto
+            }
+            
+            // Campo principal
+            const fieldGeometry = new THREE.PlaneGeometry(fieldSize, fieldSize);
+            const fieldMaterial = new THREE.MeshLambertMaterial({ color: fieldColor });
+            const field = new THREE.Mesh(fieldGeometry, fieldMaterial);
+            field.rotation.x = -Math.PI / 2;
+            field.position.set(centerX, -49.2, centerZ);
+            scene.add(field);
+            
+            // Surcos del campo
+            const rows = Math.floor(fieldSize / 15);
+            for (let i = 0; i < rows; i++) {
+                const rowGeometry = new THREE.PlaneGeometry(fieldSize * 0.95, 1.5);
+                const rowMaterial = new THREE.MeshLambertMaterial({ 
+                    color: new THREE.Color(fieldColor).multiplyScalar(0.8) 
+                });
+                const row = new THREE.Mesh(rowGeometry, rowMaterial);
+                row.rotation.x = -Math.PI / 2;
+                row.position.set(centerX, -49.1, centerZ + (i - rows/2) * 15);
+                scene.add(row);
+            }
+        }
+
+        function createPark(centerX, centerZ) {
+            const parkSize = Math.random() * 150 + 100;
+            
+            // Base del parque (césped)
+            const parkGeometry = new THREE.PlaneGeometry(parkSize, parkSize);
+            const parkMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+            const park = new THREE.Mesh(parkGeometry, parkMaterial);
+            park.rotation.x = -Math.PI / 2;
+            park.position.set(centerX, -49.2, centerZ);
+            scene.add(park);
+            
+            // Senderos del parque
+            const pathWidth = 8;
+            const pathGeometry1 = new THREE.PlaneGeometry(parkSize, pathWidth);
+            const pathGeometry2 = new THREE.PlaneGeometry(pathWidth, parkSize);
+            const pathMaterial = new THREE.MeshLambertMaterial({ color: 0x8B7355 });
+            
+            const path1 = new THREE.Mesh(pathGeometry1, pathMaterial);
+            path1.rotation.x = -Math.PI / 2;
+            path1.position.set(centerX, -49.1, centerZ);
+            scene.add(path1);
+            
+            const path2 = new THREE.Mesh(pathGeometry2, pathMaterial);
+            path2.rotation.x = -Math.PI / 2;
+            path2.position.set(centerX, -49.1, centerZ);
+            scene.add(path2);
+            
+            // Árboles en el parque
+            const treeCount = Math.floor(parkSize / 15);
+            for (let i = 0; i < treeCount; i++) {
+                const treeX = centerX + (Math.random() - 0.5) * parkSize * 0.8;
+                const treeZ = centerZ + (Math.random() - 0.5) * parkSize * 0.8;
+                const tree = createParkTree();
+                tree.position.set(treeX, -49.5, treeZ);
+                scene.add(tree);
+            }
+        }
+
+        function createParkTree() {
+            // High detail tree (close-up)
+            const createHighDetailTree = () => {
+                const treeGroup = new THREE.Group();
+                
+                // Detailed trunk
+                const trunkHeight = Math.random() * 6 + 4;
+                const trunk = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.5, trunkHeight, 8),
+                    new THREE.MeshLambertMaterial({ color: 0x8B4513 })
+                );
+                trunk.position.y = trunkHeight / 2;
+                treeGroup.add(trunk);
+                
+                // Detailed crown
+                const crownRadius = Math.random() * 3 + 2.5;
+                const crown = new THREE.Mesh(
+                    new THREE.SphereGeometry(crownRadius, 12, 8),
+                    new THREE.MeshLambertMaterial({ 
+                        color: new THREE.Color().setHSL(0.3, 0.7, 0.4 + Math.random() * 0.2),
+                        flatShading: false
+                    })
+                );
+                crown.position.y = trunkHeight + crownRadius * 0.3;
+                treeGroup.add(crown);
+                
+                return treeGroup;
+            };
+            
+            // Medium detail tree (mid-range)
+            const createMediumDetailTree = () => {
+                const treeGroup = new THREE.Group();
+                
+                // Simpler trunk
+                const trunkHeight = Math.random() * 6 + 4;
+                const trunk = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.5, trunkHeight, 6),
+                    new THREE.MeshLambertMaterial({ 
+                        color: 0x8B4513,
+                        flatShading: true
+                    })
+                );
+                trunk.position.y = trunkHeight / 2;
+                treeGroup.add(trunk);
+                
+                // Simpler crown
+                const crownRadius = Math.random() * 3 + 2.5;
+                const crown = new THREE.Mesh(
+                    new THREE.SphereGeometry(crownRadius, 8, 6),
+                    new THREE.MeshLambertMaterial({ 
+                        color: new THREE.Color().setHSL(0.3, 0.7, 0.4 + Math.random() * 0.2),
+                        flatShading: true
+                    })
+                );
+                crown.position.y = trunkHeight + crownRadius * 0.3;
+                treeGroup.add(crown);
+                
+                return treeGroup;
+            };
+            
+            // Low detail tree (far away)
+            const createLowDetailTree = () => {
+                const treeGroup = new THREE.Group();
+                
+                // Very simple tree (just a cone)
+                const height = Math.random() * 6 + 6;
+                const radius = Math.random() * 2 + 2;
+                const tree = new THREE.Mesh(
+                    new THREE.ConeGeometry(radius, height, 5, 1),
+                    new THREE.MeshLambertMaterial({ 
+                        color: new THREE.Color().setHSL(0.3, 0.7, 0.4 + Math.random() * 0.2),
+                        flatShading: true
+                    })
+                );
+                tree.position.y = height / 2;
+                treeGroup.add(tree);
+                
+                return treeGroup;
+            };
+            
+            // Create LOD object with different detail levels
+            const lodTree = new THREE.LOD();
+            
+            // Add detail levels with transition distances
+            lodTree.addLevel(createHighDetailTree(), 0);    // High detail up to 200 units
+            lodTree.addLevel(createMediumDetailTree(), 200); // Medium detail up to 500 units
+            lodTree.addLevel(createLowDetailTree(), 500);   // Low detail beyond 500 units
+            
+            return lodTree;
+        }
+
+        function createWaterBodies() {
+            // Río principal serpenteante
+            createRiver();
+            
+            // Lagos dispersos
+            for (let i = 0; i < 8; i++) {
+                const x = (Math.random() - 0.5) * 9000;
+                const z = (Math.random() - 0.5) * 9000;
+                createLake(x, z);
+            }
+            
+            // Estanques pequeños
+            for (let i = 0; i < 15; i++) {
+                const x = (Math.random() - 0.5) * 10000;
+                const z = (Math.random() - 0.5) * 10000;
+                createPond(x, z);
+            }
+        }
+
+        function createRiver() {
+            const segments = 20;
+            const riverWidth = 60;
+            
+            for (let i = 0; i < segments; i++) {
+                const progress = i / segments;
+                const x = -5000 + progress * 10000 + Math.sin(progress * Math.PI * 3) * 1000;
+                const z = -2000 + Math.sin(progress * Math.PI * 2) * 800;
+                
+                const riverGeometry = new THREE.PlaneGeometry(200, riverWidth);
+                const riverMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0x4169E1,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const riverSegment = new THREE.Mesh(riverGeometry, riverMaterial);
+                riverSegment.rotation.x = -Math.PI / 2;
+                riverSegment.rotation.z = Math.atan2(Math.cos(progress * Math.PI * 3), 1) * 0.5;
+                riverSegment.position.set(x, -49, z);
+                scene.add(riverSegment);
+            }
+        }
+
+        function createLake(centerX, centerZ) {
+            const lakeRadius = Math.random() * 80 + 60;
+            const lakeGeometry = new THREE.CircleGeometry(lakeRadius, 12);
+            const lakeMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x4169E1,
+                transparent: true,
+                opacity: 0.7
+            });
+            const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
+            lake.rotation.x = -Math.PI / 2;
+            lake.position.set(centerX, -48.5, centerZ);
+            scene.add(lake);
+        }
+
+        function createPond(centerX, centerZ) {
+            const pondRadius = Math.random() * 20 + 15;
+            const pondGeometry = new THREE.CircleGeometry(pondRadius, 8);
+            const pondMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x4682B4,
+                transparent: true,
+                opacity: 0.6
+            });
+            const pond = new THREE.Mesh(pondGeometry, pondMaterial);
+            pond.rotation.x = -Math.PI / 2;
+            pond.position.set(centerX, -48.8, centerZ);
+            scene.add(pond);
+        }
+
+        function createScatteredVegetation() {
+            // Arbustos dispersos por todo el mapa
+            for (let i = 0; i < 200; i++) {
+                const x = (Math.random() - 0.5) * 11500;
+                const z = (Math.random() - 0.5) * 11500;
+                createBush(x, z);
+            }
+            
+            // Grupos de flores silvestres
+            for (let i = 0; i < 100; i++) {
+                const x = (Math.random() - 0.5) * 11000;
+                const z = (Math.random() - 0.5) * 11000;
+                createFlowerPatch(x, z);
+            }
+            
+            // Rocas dispersas
+            for (let i = 0; i < 80; i++) {
+                const x = (Math.random() - 0.5) * 11500;
+                const z = (Math.random() - 0.5) * 11500;
+                createRock(x, z);
+            }
+        }
+
+        function createBush(x, z) {
+            const bushRadius = Math.random() * 2 + 1;
+            const bushHeight = Math.random() * 2 + 1.5;
+            const bushGeometry = new THREE.SphereGeometry(bushRadius, 6, 4);
+            const bushMaterial = new THREE.MeshLambertMaterial({ 
+                color: new THREE.Color().setHSL(0.25 + Math.random() * 0.15, 0.6, 0.3 + Math.random() * 0.3) 
+            });
+            const bush = new THREE.Mesh(bushGeometry, bushMaterial);
+            bush.position.set(x, -49.5 + bushHeight/2, z);
+            bush.scale.y = bushHeight / bushRadius;
+            scene.add(bush);
+        }
+
+        function createFlowerPatch(centerX, centerZ) {
+            const patchSize = Math.random() * 15 + 10;
+            const flowerColors = [0xFF69B4, 0xFF1493, 0xFFB6C1, 0xFFA500, 0xFF4500, 0x9370DB];
+            
+            for (let i = 0; i < 8; i++) {
+                const x = centerX + (Math.random() - 0.5) * patchSize;
+                const z = centerZ + (Math.random() - 0.5) * patchSize;
+                
+                const flowerGeometry = new THREE.SphereGeometry(0.3, 6, 4);
+                const flowerMaterial = new THREE.MeshLambertMaterial({ 
+                    color: flowerColors[Math.floor(Math.random() * flowerColors.length)]
+                });
+                const flower = new THREE.Mesh(flowerGeometry, flowerMaterial);
+                flower.position.set(x, -49.2, z);
+                scene.add(flower);
+            }
+        }
+
+        function createRock(x, z) {
+            const rockSize = Math.random() * 3 + 2;
+            const rockGeometry = new THREE.SphereGeometry(rockSize, 6, 4);
+            const rockMaterial = new THREE.MeshLambertMaterial({ 
+                color: new THREE.Color().setHSL(0, 0, 0.3 + Math.random() * 0.3) 
+            });
+            const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+            rock.position.set(x, -49.5 + rockSize/2, z);
+            rock.scale.set(1, 0.6 + Math.random() * 0.4, 1);
+            scene.add(rock);
+        }
+
+        function createCity(centerX, centerZ, buildingCount, maxHeight, spread) {
+            for (let i = 0; i < buildingCount; i++) {
+                const x = centerX + (Math.random() - 0.5) * spread;
+                const z = centerZ + (Math.random() - 0.5) * spread;
+                
+                const width = Math.random() * 40 + 20;
+                const depth = Math.random() * 40 + 20;
+                const height = Math.random() * maxHeight + 15;
+                
+                const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
+                const buildingMaterial = new THREE.MeshLambertMaterial({
+                    color: new THREE.Color().setHSL(0, 0, Math.random() * 0.4 + 0.3)
+                });
+                
+                const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+                building.position.set(x, -49.5 + height/2, z);
+                scene.add(building);
+            }
+        }
+
+        function createTown(centerX, centerZ, houseCount) {
+            for (let i = 0; i < houseCount; i++) {
+                const x = centerX + (Math.random() - 0.5) * 250;
+                const z = centerZ + (Math.random() - 0.5) * 250;
+                
+                const width = Math.random() * 18 + 12;
+                const depth = Math.random() * 18 + 12;
+                const height = Math.random() * 12 + 8;
+                
+                const houseColors = [0xDEB887, 0xF0E68C, 0xFFA07A, 0xD3D3D3, 0xF5DEB3, 0xFFB6C1];
+                const houseMaterial = new THREE.MeshLambertMaterial({
+                    color: houseColors[Math.floor(Math.random() * houseColors.length)]
+                });
+                
+                const house = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), houseMaterial);
+                house.position.set(x, -49.5 + height/2, z);
+                scene.add(house);
+            }
+        }
+
+        function createForest(centerX, centerZ, treeCount) {
+            for (let i = 0; i < treeCount; i++) {
+                const x = centerX + (Math.random() - 0.5) * 400;
+                const z = centerZ + (Math.random() - 0.5) * 400;
+                
+                // Tronco
+                const trunkHeight = Math.random() * 10 + 8;
+                const trunk = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.6, 1, trunkHeight, 8),
+                    new THREE.MeshLambertMaterial({ color: 0x8B4513 })
+                );
+                trunk.position.set(x, -49.5 + trunkHeight/2, z);
+                scene.add(trunk);
+                
+                // Copa
+                const crownRadius = Math.random() * 6 + 4;
+                const crown = new THREE.Mesh(
+                    new THREE.SphereGeometry(crownRadius, 8, 6),
+                    new THREE.MeshLambertMaterial({ 
+                        color: new THREE.Color().setHSL(0.25 + Math.random() * 0.1, 0.7, 0.3 + Math.random() * 0.3) 
+                    })
+                );
+                crown.position.set(x, -49.5 + trunkHeight + crownRadius * 0.6, z);
+                scene.add(crown);
+            }
+        }
+
+        // Física del avión corregida y suavizada
+        function updateAirplane() {
+            const leftInput = { x: joystickState.left.x, y: joystickState.left.y };
+            const rightInput = { x: joystickState.right.x, y: joystickState.right.y };
+            
+            // Sistema de potencia gradual
+            const thrustInput = rightInput.y;
+            if (Math.abs(thrustInput) > 0.05) {
+                const thrustRate = isOnGround ? 0.018 : 0.022; // Más gradual
+                currentThrust += thrustInput * thrustRate;
+                currentThrust = Math.max(0, Math.min(1, currentThrust));
+            }
+            
+            // Aplicar potencia del motor
+            const motorForce = 0.12 + (currentThrust * 0.6);
+            if (motorForce > 0.15 || !isOnGround) {
+                velocity.z += Math.cos(smoothRotationY) * motorForce;
+                velocity.x += Math.sin(smoothRotationY) * motorForce;
+            }
+            
+            // Control de elevación GRADUAL
+            const targetElevation = leftInput.y * 0.25; // Reducido de 0.4 a 0.25
+            smoothElevation += (targetElevation - smoothElevation) * 0.06; // Muy gradual
+            velocity.y += smoothElevation;
+            
+            // Control lateral suave
+            velocity.x += leftInput.x * 0.1; // Reducido de 0.15 a 0.1
+            
+            // Control de dirección SUAVIZADO
+            const currentSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+            const baseTurnRate = 0.015; // Reducido de 0.028
+            const speedBonus = currentSpeed * 0.012; // Reducido de 0.025
+            const targetTurnRate = rightInput.x * (baseTurnRate + speedBonus);
+            
+            // Suavizar la rotación Y (giros)
+            const rotationSmoothFactor = isOnGround ? 0.08 : 0.12; // Más suave en tierra
+            smoothRotationY -= targetTurnRate;
+            rotation.y += (smoothRotationY - rotation.y) * rotationSmoothFactor;
+            
+            // Sustentación aerodinámica
+            if (currentSpeed > 0.4 && !isOnGround) {
+                const lift = Math.min(currentSpeed * 0.018, 0.03); // Reducido ligeramente
+                velocity.y += lift;
+            }
+            
+            // Gravedad más suave
+            velocity.y -= 0.014; // Reducido de 0.016
+            
+            // Resistencia del aire optimizada
+            const airResistance = isOnGround ? 0.89 : 0.988;
+            velocity.x *= airResistance;
+            velocity.z *= airResistance;
+            velocity.y *= 0.98; // Mejor para elevación gradual
+            
+            // Efectos visuales SUAVIZADOS
+            const targetBank = rightInput.x * 0.5 + leftInput.x * 0.25; // Reducido
+            const targetPitch = smoothElevation * 0.6 + (currentThrust * 0.08); // Reducido
+            
+            // Aplicar suavizado a efectos visuales
+            smoothBank += (targetBank - smoothBank) * 0.1; // Muy suave
+            smoothPitch += (targetPitch - smoothPitch) * 0.08; // Muy suave
+            
+            rotation.z = smoothBank;
+            rotation.x = smoothPitch;
+            
+            // Límites de velocidad
+            const maxSpeed = 2.8; // Reducido ligeramente
+            velocity.x = Math.max(-maxSpeed, Math.min(maxSpeed, velocity.x));
+            velocity.z = Math.max(-maxSpeed, Math.min(maxSpeed, velocity.z));
+            velocity.y = Math.max(-1.5, Math.min(1.5, velocity.y)); // Reducido
+            
+            // Actualizar posición
+            airplane.position.x += velocity.x;
+            airplane.position.y += velocity.y;
+            airplane.position.z += velocity.z;
+            
+            // Lógica de tierra y despegue mejorada
+            const groundLevel = -41;
+            if (airplane.position.y <= groundLevel) {
+                airplane.position.y = groundLevel;
+                isOnGround = true;
+                velocity.y = Math.max(0, velocity.y);
+                
+                // Fricción en tierra
+                if (currentThrust < 0.25) {
+                    velocity.x *= 0.85; // Más fricción
+                    velocity.z *= 0.85;
+                }
+                
+                // Condiciones de despegue más estrictas
+                if (currentSpeed > 1.2 && smoothElevation > 0.15 && currentThrust > 0.5) {
+                    isOnGround = false;
+                    velocity.y = 0.2; // Impulso más suave
+                }
+            } else {
+                isOnGround = false;
+            }
+            
+            // Aplicar rotaciones suavizadas con límites más estrictos
+            airplane.rotation.y = rotation.y;
+            airplane.rotation.x = Math.max(-0.4, Math.min(0.4, rotation.x)); // Reducido
+            airplane.rotation.z = Math.max(-0.6, Math.min(0.6, rotation.z)); // Reducido
+            
+            // Actualizar interfaz
+            updateUI(currentSpeed);
+            
+            // Animar hélices (ambas) más suave
+            const leftPropeller = airplane.getObjectByName('leftPropeller');
+            const rightPropeller = airplane.getObjectByName('rightPropeller');
+            if (leftPropeller) leftPropeller.rotation.z += 0.5 + (currentThrust * 1.5);
+            if (rightPropeller) rightPropeller.rotation.z += 0.5 + (currentThrust * 1.5);
+        }
+
+        function updateUI(currentSpeed) {
+            const speedElement = document.getElementById('speedValue');
+            const thrustElement = document.getElementById('thrustValue');
+            const altitudeElement = document.getElementById('altitudeValue');
+            const statusElement = document.getElementById('flightStatus');
+            
+            if (speedElement) speedElement.textContent = Math.round(currentSpeed * 85);
+            if (thrustElement) thrustElement.textContent = Math.round(currentThrust * 100);
+            if (altitudeElement) altitudeElement.textContent = Math.round(airplane.position.y + 50);
+            
+            if (statusElement) {
+                if (isOnGround) {
+                    if (currentThrust < 0.15) {
+                        statusElement.textContent = 'PARADO';
+                        statusElement.style.color = '#ff4444';
+                    } else if (currentSpeed > 0.8) {
+                        statusElement.textContent = 'DESPEGANDO';
+                        statusElement.style.color = '#ffaa00';
+                    } else {
+                        statusElement.textContent = 'RODANDO';
+                        statusElement.style.color = '#88ff88';
+                    }
+                } else {
+                    if (velocity.y > 0.1) {
+                        statusElement.textContent = 'ASCENDIENDO';
+                        statusElement.style.color = '#44ff44';
+                    } else if (velocity.y < -0.1) {
+                        statusElement.textContent = 'DESCENDIENDO';
+                        statusElement.style.color = '#ff8844';
+                    } else {
+                        statusElement.textContent = 'VUELO ESTABLE';
+                        statusElement.style.color = '#44aaff';
+                    }
+                }
+            }
+        }
+
+        // CÁMARA CORREGIDA - Enfoque fijo en la cola del avión
+        function updateCamera() {
+            // Definir el punto específico de la cola del avión
+            const tailPosition = new THREE.Vector3(0, 0, -3); // Posición de la cola relativa al avión
+            tailPosition.applyQuaternion(airplane.quaternion); // Aplicar rotación del avión
+            tailPosition.add(airplane.position); // Convertir a posición mundial
+            
+            // Posición de la cámara siempre detrás de la cola
+            const cameraOffset = new THREE.Vector3(0, 8, -20); // Offset desde la cola
+            cameraOffset.applyQuaternion(airplane.quaternion); // Rotar con el avión
+            
+            // Calcular posición final de la cámara
+            const targetCameraPosition = tailPosition.clone().add(cameraOffset);
+            
+            // Movimiento suave de la cámara hacia la posición objetivo
+            camera.position.lerp(targetCameraPosition, 0.15);
+            
+            // La cámara SIEMPRE mira específicamente a la cola del avión
+            camera.lookAt(tailPosition);
+            
+            // REMOVIDO: Sin rotación de banking para evitar que se vea boca abajo
+            // camera.rotation.z = bankingInfluence; ← Esto causaba el problema
+        }
+
+        // Configurar iluminación
+        function setupLighting() {
+            // Luz ambiental
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
+            scene.add(ambientLight);
+            
+            // Luz direccional (sol)
+            const directionalLight = new THREE.DirectionalLight(0xFFFFFF, 0.9);
+            directionalLight.position.set(200, 300, 100);
+            scene.add(directionalLight);
+        }
+
+        // Utilidades de optimización
+        const LODManager = {
+            // Niveles de detalle (en unidades de distancia)
+            levels: [
+                { distance: 500, name: 'high' },
+                { distance: 1000, name: 'medium' },
+                { distance: 2000, name: 'low' },
+                { distance: Infinity, name: 'ultraLow' }
+            ],
+            
+            // Crear un objeto con LOD
+            createLODObject: function(objectsByLOD) {
+                const lod = new THREE.LOD();
+                
+                // Ordenar los niveles de detalle por distancia
+                this.levels.forEach(level => {
+                    if (objectsByLOD[level.name]) {
+                        lod.addLevel(objectsByLOD[level.name], level.distance);
+                    }
+                });
+                
+                return lod;
+            },
+            
+            // Actualizar LOD basado en la posición de la cámara
+            updateLODs: function(camera) {
+                scene.traverse(object => {
+                    if (object instanceof THREE.LOD) {
+                        object.update(camera);
+                    }
+                });
+            }
+        };
+        
+        // Frustum Culling
+        const FrustumCuller = {
+            frustum: new THREE.Frustum(),
+            cameraViewProjectionMatrix: new THREE.Matrix4(),
+            
+            // Actualizar la matriz de vista de la cámara
+            updateFrustum: function(camera) {
+                this.cameraViewProjectionMatrix.multiplyMatrices(
+                    camera.projectionMatrix,
+                    camera.matrixWorldInverse
+                );
+                this.frustum.setFromProjectionMatrix(this.cameraViewProjectionMatrix);
+            },
+            
+            // Verificar si un objeto está en el frustum
+            isInFrustum: function(object) {
+                if (!object.geometry?.boundingSphere) {
+                    // Si el objeto no tiene bounding sphere, asumir que está visible
+                    return true;
+                }
+                
+                // Crear una esfera de colisión para el objeto
+                const sphere = object.geometry.boundingSphere.clone();
+                sphere.applyMatrix4(object.matrixWorld);
+                
+                return this.frustum.intersectsSphere(sphere);
+            },
+            
+            // Actualizar la visibilidad de los objetos basado en el frustum
+            updateVisibility: function(scene) {
+                scene.traverse(object => {
+                    if (object instanceof THREE.Mesh || object instanceof THREE.Group) {
+                        object.visible = this.isInFrustum(object);
+                    }
+                });
+            }
+        };
+        
+        // Control de FPS
+        let lastTime = 0;
+        const targetFPS = 60;
+        const frameTime = 1000 / targetFPS;
+        
+        // Loop de animación optimizado al máximo
+        function animate(currentTime = 0) {
+            requestAnimationFrame(animate);
+            
+            // Control de FPS mejorado
+            const deltaTime = currentTime - lastTime;
+            if (deltaTime < frameTime) return;
+            lastTime = currentTime - (deltaTime % frameTime);
+            
+            // Actualizar física y cámara
+            updateAirplane();
+            updateCamera();
+            
+            // Actualizar frustum culling
+            FrustumCuller.updateFrustum(camera);
+            
+            // Actualizar LODs
+            LODManager.updateLODs(camera);
+            
+            // Actualizar visibilidad basada en el frustum
+            FrustumCuller.updateVisibility(scene);
+            
+            // Renderizar solo si es necesario
+            if (renderer && scene && camera) {
+                // Limpiar solo el área necesaria
+                renderer.clear(true, true, true);
+                
+                // Renderizar con configuración óptima
+                renderer.render(scene, camera);
+                
+                // Forzar la recolección de basura periódicamente
+                if (Math.random() < 0.01) {
+                    window.performance?.memory?.jsHeapSizeLimit > 0 && 
+                    window.gc?.();
+                }
+            }
+        }
+
+        // Manejar redimensión de ventana
+        function onWindowResize() {
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        }
+
+        // Inicialización principal
+        function init() {
+            try {
+                console.log('Iniciando simulador de vuelo...');
+                
+                // Crear escena
+                scene = new THREE.Scene();
+                scene.fog = new THREE.Fog(0x87CEEB, 800, 4000);
+                
+                // Crear cámara con posición inicial detrás del avión
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 6000);
+                camera.position.set(0, 10, -25); // Posición inicial detrás
+                
+                        // Crear renderizador altamente optimizado
+                const canvas = document.getElementById('canvas');
+                if (!canvas) {
+                    throw new Error('No se encontró el elemento canvas');
+                }
+                
+                renderer = new THREE.WebGLRenderer({ 
+                    canvas: canvas, 
+                    antialias: false,
+                    powerPreference: "high-performance",
+                    stencil: false,
+                    depth: true,
+                    alpha: false,
+                    preserveDrawingBuffer: false,
+                    antialias: false
+                });
+                
+                // Configuración avanzada del renderer
+                renderer.autoClear = true;
+                renderer.sortObjects = false; // Mejora el rendimiento al desactivar el ordenamiento
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setClearColor(0x87CEEB);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Reducir calidad para mejor rendimiento
+                renderer.shadowMap.enabled = false;
+                renderer.outputEncoding = THREE.sRGBEncoding;
+                
+                // Optimización de la escena
+                if (scene) {
+                    scene.background = new THREE.Color(0x87CEEB);
+                    scene.fog = new THREE.FogExp2(0x87CEEB, 0.0005); // Niebla más eficiente
+                }
+                
+                // Crear elementos del mundo
+                createAirplane();
+                createWorld();
+                setupLighting();
+                
+                // Inicializar sistema de joysticks
+                initJoystickSystem();
+                
+                // Event listeners
+                window.addEventListener('resize', onWindowResize);
+                
+                // Iniciar loop de animación
+                animate();
+                
+                console.log('✈️ Simulador iniciado correctamente');
+                console.log('📱 Controles:');
+                console.log('   Joystick IZQUIERDO: Elevación (subir/bajar) y movimiento lateral');
+                console.log('   Joystick DERECHO: Potencia (arriba/abajo) y dirección (izq/der)');
+                
+            } catch (error) {
+                console.error('❌ Error en la inicialización:', error);
+                
+                // Mostrar mensaje de error
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: rgba(200, 0, 0, 0.9);
+                    color: white;
+                    padding: 25px;
+                    border-radius: 15px;
+                    z-index: 2000;
+                    text-align: center;
+                    font-family: Arial, sans-serif;
+                    box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+                `;
+                errorDiv.innerHTML = `
+                    <h2>⚠️ Error del Simulador</h2>
+                    <p>Hubo un problema al inicializar el juego.</p>
+                    <p><strong>Solución:</strong> Recarga la página</p>
+                    <button onclick="location.reload()" style="
+                        background: white; 
+                        color: #d00; 
+                        border: none; 
+                        padding: 10px 20px; 
+                        border-radius: 5px; 
+                        cursor: pointer; 
+                        font-weight: bold;
+                        margin-top: 10px;
+                    ">🔄 Recargar</button>
+                `;
+                document.body.appendChild(errorDiv);
+            }
+        }
+
+        // Iniciar cuando esté listo
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+
+        // Prevenir comportamientos por defecto en móviles
+        document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+        document.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+        document.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
+    </script>
+</body>
+</html>
