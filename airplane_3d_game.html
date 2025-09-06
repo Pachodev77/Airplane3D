@@ -190,8 +190,245 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- World Layout Configuration will be loaded after Three.js -->
+
     <script>
+        // World configuration
+        const worldConfig = {
+            // World dimensions
+            size: 10000,  // World size (radius)
+            
+            // Urban areas (cities and towns)
+            urbanAreas: [
+                // Main cities
+                { x: -3000, z: -2000, radius: 1200, type: 'city', name: 'Ciudad Norte' },
+                { x: 2500, z: 1500, radius: 1000, type: 'city', name: 'Ciudad Sur' },
+                
+                // Smaller towns
+                { x: -1000, z: 3000, radius: 600, type: 'town', name: 'Pueblo del Este' },
+                { x: 3500, z: -2500, radius: 700, type: 'town', name: 'Pueblo Oeste' },
+                { x: -3500, z: 1000, radius: 500, type: 'town', name: 'Villa Norte' },
+                { x: 2000, z: 3500, radius: 550, type: 'town', name: 'Villa Sur' }
+            ],
+            
+            // Rivers (flowing from high to low elevation)
+            rivers: [
+                {
+                    name: 'Río Norte',
+                    points: [
+                        { x: -4500, z: -4000, width: 60 },
+                        { x: -3000, z: -3500, width: 70 },
+                        { x: -1500, z: -3000, width: 80 },
+                        { x: 0, z: -2000, width: 90 },
+                        { x: 2000, z: -1000, width: 100 },
+                        { x: 4000, z: 0, width: 110 },
+                        { x: 5000, z: 2000, width: 120 }
+                    ]
+                },
+                {
+                    name: 'Río Sur',
+                    points: [
+                        { x: 4000, z: -4500, width: 50 },
+                        { x: 2000, z: -3500, width: 60 },
+                        { x: 0, z: -2500, width: 70 },
+                        { x: -1500, z: -1500, width: 80 },
+                        { x: -2000, z: 0, width: 90 },
+                        { x: -2500, z: 2000, width: 100 },
+                        { x: -3000, z: 4000, width: 110 }
+                    ]
+                }
+            ],
+            
+            // Lakes (in natural depressions)
+            lakes: [
+                { x: -2000, z: 2500, radius: 500, name: 'Lago Esmeralda' },
+                { x: 3000, z: -1000, radius: 400, name: 'Lago Azul' },
+                { x: -3500, z: -1000, radius: 300, name: 'Laguna Norte' },
+                { x: 4000, z: 3000, radius: 600, name: 'Laguna del Sur' }
+            ],
+            
+            // Forests (around water sources and in non-arable land)
+            forests: [
+                { x: -3500, z: -3500, radius: 1200, density: 0.8, name: 'Bosque del Norte' },
+                { x: 4000, z: 3000, radius: 1500, density: 0.9, name: 'Bosque del Sur' },
+                { x: 0, z: 4000, radius: 1000, density: 0.7, name: 'Bosque del Este' },
+                { x: 4500, z: -3500, radius: 800, density: 0.6, name: 'Bosque del Oeste' }
+            ],
+            
+            // Farmland (in flat areas between cities)
+            farmlands: [
+                { x: 0, z: 0, width: 2000, height: 1500, rotation: Math.PI/4 },
+                { x: -2000, z: -2000, width: 1800, height: 1200, rotation: -Math.PI/6 },
+                { x: 2000, z: 2000, width: 1600, height: 1400, rotation: Math.PI/8 }
+            ],
+            
+            // Road network configuration
+            roads: {
+                // Highways (connect major cities)
+                highways: [
+                    { from: 'Ciudad Norte', to: 'Ciudad Sur', lanes: 4, speedLimit: 120 },
+                    { from: 'Ciudad Norte', to: 'Pueblo del Este', lanes: 2, speedLimit: 90 },
+                    { from: 'Ciudad Sur', to: 'Pueblo Oeste', lanes: 2, speedLimit: 90 },
+                    { from: 'Pueblo del Este', to: 'Villa Sur', lanes: 2, speedLimit: 90 },
+                    { from: 'Pueblo Oeste', to: 'Villa Norte', lanes: 2, speedLimit: 90 }
+                ],
+                
+                // Local roads (connect towns and villages)
+                localRoads: [
+                    // Roads around Ciudad Norte
+                    { type: 'ring', center: 'Ciudad Norte', radius: 800, lanes: 2 },
+                    { type: 'radial', center: 'Ciudad Norte', angle: 0, length: 1000, lanes: 2 },
+                    { type: 'radial', center: 'Ciudad Norte', angle: Math.PI/2, length: 1000, lanes: 2 },
+                    
+                    // Roads around Ciudad Sur
+                    { type: 'ring', center: 'Ciudad Sur', radius: 700, lanes: 2 },
+                    { type: 'radial', center: 'Ciudad Sur', angle: Math.PI, length: 1000, lanes: 2 },
+                    { type: 'radial', center: 'Ciudad Sur', angle: -Math.PI/2, length: 1000, lanes: 2 }
+                ]
+            },
+            
+            // Get urban area by name
+            getUrbanArea: function(name) {
+                return this.urbanAreas.find(area => area.name === name);
+            },
+            
+            // Check if a point is in any urban area
+            isInUrbanArea: function(x, z) {
+                return this.urbanAreas.some(area => {
+                    const dx = x - area.x;
+                    const dz = z - area.z;
+                    return Math.sqrt(dx * dx + dz * dz) <= area.radius;
+                });
+            },
+            
+            // Check if a point is in water
+            isInWater: function(x, z) {
+                // Check rivers
+                for (const river of this.rivers) {
+                    for (let i = 0; i < river.points.length - 1; i++) {
+                        const p1 = river.points[i];
+                        const p2 = river.points[i + 1];
+                        const width = (p1.width + p2.width) / 2;
+                        
+                        if (this.pointNearLine(x, z, p1.x, p1.z, p2.x, p2.z, width)) {
+                            return true;
+                        }
+                    }
+                }
+                
+                // Check lakes
+                for (const lake of this.lakes) {
+                    const dx = x - lake.x;
+                    const dz = z - lake.z;
+                    if (Math.sqrt(dx * dx + dz * dz) <= lake.radius) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            },
+            
+            // Helper function to check if a point is near a line segment
+            pointNearLine: function(px, pz, x1, z1, x2, z2, maxDistance) {
+                // Vector from line start to end
+                const lineVec = { x: x2 - x1, z: z2 - z1 };
+                const lineLength = Math.sqrt(lineVec.x * lineVec.x + lineVec.z * lineVec.z);
+                
+                // Normalize line vector
+                const lineDir = { x: lineVec.x / lineLength, z: lineVec.z / lineLength };
+                
+                // Vector from line start to point
+                const pointVec = { x: px - x1, z: pz - z1 };
+                
+                // Project point onto line
+                const projLength = pointVec.x * lineDir.x + pointVec.z * lineDir.z;
+                
+                // Find closest point on line segment
+                let closest;
+                if (projLength < 0) {
+                    closest = { x: x1, z: z1 }; // Beyond line start
+                } else if (projLength > lineLength) {
+                    closest = { x: x2, z: z2 }; // Beyond line end
+                } else {
+                    closest = {
+                        x: x1 + lineDir.x * projLength,
+                        z: z1 + lineDir.z * projLength
+                    };
+                }
+                
+                // Distance from point to closest point on line
+                const dx = px - closest.x;
+                const dz = pz - closest.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                return distance <= maxDistance;
+            },
+            
+            // Get the biome at a specific point
+            getBiomeAt: function(x, z) {
+                // Check if in water
+                if (this.isInWater(x, z)) {
+                    return 'water';
+                }
+                
+                // Check urban areas
+                if (this.isInUrbanArea(x, z)) {
+                    return 'urban';
+                }
+                
+                // Check forests
+                for (const forest of this.forests) {
+                    const dx = x - forest.x;
+                    const dz = z - forest.z;
+                    if (Math.sqrt(dx * dx + dz * dz) <= forest.radius) {
+                        return 'forest';
+                    }
+                }
+                
+                // Default to plains
+                return 'plains';
+            },
+            
+            // Get elevation at a point (simplified)
+            getElevation: function(x, z) {
+                // Simple implementation - in a real game, you'd use noise functions
+                // or a heightmap for more realistic terrain
+                
+                // Calculate distance to each elevation point and interpolate
+                let totalWeight = 0;
+                let weightedSum = 0;
+                
+                const elevationPoints = [
+                    { x: -4000, z: -4000, height: 200 },
+                    { x: -4000, z: 0, height: 150 },
+                    { x: 0, z: -4000, height: 180 },
+                    { x: 4000, z: 4000, height: 20 },
+                    { x: 0, z: 4000, height: 50 },
+                    { x: 4000, z: 0, height: 30 }
+                ];
+                
+                for (const point of elevationPoints) {
+                    const dx = x - point.x;
+                    const dz = z - point.z;
+                    const distanceSq = dx * dx + dz * dz;
+                    
+                    if (distanceSq < 0.0001) {
+                        return point.height; // Exact match
+                    }
+                    
+                    const weight = 1 / distanceSq;
+                    weightedSum += point.height * weight;
+                    totalWeight += weight;
+                }
+                
+                return weightedSum / totalWeight;
+            }
+        };
+
         // Variables globales principales
         let scene, camera, airplane;
         let velocity = { x: 0, y: 0, z: 0 };
@@ -423,61 +660,234 @@
             scene.add(airplane);
         }
 
-        // Crear mundo optimizado al máximo
+        // World configuration is now defined inline
+        
+        // Create the world using the new layout system
         function createWorld() {
-            // Textura de pista con líneas incluida (más eficiente que geometrías separadas)
+            // Create ground plane
+            const groundGeometry = new THREE.PlaneGeometry(
+                worldConfig.size * 2, 
+                worldConfig.size * 2
+            );
+            
+            // Create a more detailed ground texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const context = canvas.getContext('2d');
+            
+            // Draw grass texture
+            const grassPattern = context.createLinearGradient(0, 0, 512, 512);
+            grassPattern.addColorStop(0, '#7CFC00');
+            grassPattern.addColorStop(0.5, '#76EE00');
+            grassPattern.addColorStop(1, '#66CD00');
+            context.fillStyle = grassPattern;
+            context.fillRect(0, 0, 512, 512);
+            
+            // Add some noise for variation
+            const imageData = context.getImageData(0, 0, 512, 512);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                // Add subtle noise to the green channel
+                const noise = Math.random() * 30 - 15;
+                data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
+            }
+            context.putImageData(imageData, 0, 0);
+            
+            const groundTexture = new THREE.CanvasTexture(canvas);
+            groundTexture.wrapS = THREE.RepeatWrapping;
+            groundTexture.wrapT = THREE.RepeatWrapping;
+            groundTexture.repeat.set(20, 20);  // Tile the texture
+            
+            const groundMaterial = new THREE.MeshLambertMaterial({ 
+                map: groundTexture,
+                side: THREE.DoubleSide
+            });
+            
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -49;  // Ground level
+            scene.add(ground);
+            
+            // Create runway at the center
+            createRunway(0, 0, 200, 3000);
+            
+            // Create urban areas (cities and towns)
+            createUrbanAreas();
+            
+            // Create natural features (rivers, lakes, forests)
+            createNaturalFeatures();
+            
+            // Create road network
+            createRoadNetwork();
+            
+            // Add vegetation
+            createScatteredVegetation();
+            
+            // Create clouds
+            createClouds();
+        }
+        
+        // Create a runway with proper markings
+        function createRunway(x, z, width, length) {
+            // Create runway surface
+            const runwayGeometry = new THREE.PlaneGeometry(width, length);
+            
+            // Create runway texture with markings
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
-            canvas.width = 6000;
-            canvas.height = 100;
+            canvas.width = 256;
+            canvas.height = 2048;
             
-            // Dibujar pista
-            context.fillStyle = '#555555';
+            // Dark gray background
+            context.fillStyle = '#444444';
             context.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Dibujar líneas de pista
-            context.fillStyle = '#FFFFFF';
-            for (let i = 0; i < canvas.width; i += 200) {
-                context.fillRect(i, 47.5, 60, 5);
-            }
+            // Center line
+            context.strokeStyle = '#FFFFFF';
+            context.lineWidth = 2;
+            context.setLineDash([40, 20]);
+            context.beginPath();
+            context.moveTo(canvas.width / 2, 0);
+            context.lineTo(canvas.width / 2, canvas.height);
+            context.stroke();
+            
+            // Edge lines
+            context.strokeStyle = '#FFFFFF';
+            context.lineWidth = 4;
+            context.setLineDash([]);
+            
+            // Left edge
+            context.beginPath();
+            context.moveTo(10, 0);
+            context.lineTo(10, canvas.height);
+            context.stroke();
+            
+            // Right edge
+            context.beginPath();
+            context.moveTo(canvas.width - 10, 0);
+            context.lineTo(canvas.width - 10, canvas.height);
+            context.stroke();
+            
+            // Threshold bars at both ends
+            context.strokeStyle = '#FFFFFF';
+            context.lineWidth = 2;
+            
+            // Bottom threshold
+            context.beginPath();
+            context.moveTo(30, 50);
+            context.lineTo(canvas.width - 30, 50);
+            context.stroke();
+            
+            // Top threshold
+            context.beginPath();
+            context.moveTo(30, canvas.height - 50);
+            context.lineTo(canvas.width - 30, canvas.height - 50);
+            context.stroke();
             
             const texture = new THREE.CanvasTexture(canvas);
-            const runwayMaterial = new THREE.MeshBasicMaterial({ 
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(1, 1);
+            
+            const runwayMaterial = new THREE.MeshLambertMaterial({ 
                 map: texture,
                 side: THREE.DoubleSide
             });
             
-            const runwayGeometry = new THREE.PlaneGeometry(6000, 100, 1, 1);
             const runway = new THREE.Mesh(runwayGeometry, runwayMaterial);
             runway.rotation.x = -Math.PI / 2;
-            runway.position.y = -48.5;  // Slightly raised to prevent z-fighting
+            runway.position.set(x, -48.5, z);  // Slightly above ground to prevent z-fighting
             scene.add(runway);
             
-            // Terreno con textura simple
-            const groundGeometry = new THREE.PlaneGeometry(12000, 12000, 1, 1);
-            const groundMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x228B22,
-                side: THREE.DoubleSide
-            });
-            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-            ground.rotation.x = -Math.PI / 2;
-            ground.position.y = -50;  // Ground at y = -50
-            scene.add(ground);
+            return runway;
+        }
+        
+        // Create natural features (rivers, lakes, forests, etc.)
+        function createNaturalFeatures() {
+            // Create rivers
+            for (const river of worldConfig.rivers) {
+                createRiver(river);
+            }
             
-            // Nubes optimizadas con instancias
-            const cloudGeometry = new THREE.SphereGeometry(1, 6, 4);
-            const cloudMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0xFFFFFF,
+            // Create lakes
+            for (const lake of worldConfig.lakes) {
+                createLake(lake.x, lake.z, lake.radius);
+            }
+            
+            // Create forests
+            for (const forest of worldConfig.forests) {
+                createForest(forest.x, forest.z, forest.radius);
+            }
+            
+            // Create farmlands
+            for (const field of worldConfig.farmlands) {
+                createFarmField(field.x, field.z);
+            }
+            
+            // Create scattered vegetation
+            createScatteredVegetation();
+        }
+        
+        // Create clouds for the sky
+        function createClouds() {
+            const cloudGeometry = new THREE.SphereGeometry(1, 8, 8);
+            const cloudMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
                 transparent: true,
                 opacity: 0.8,
-                side: THREE.DoubleSide
+                flatShading: true
             });
             
-            // Usar instancias de malla para nubes (más eficiente)
-            const cloudCount = 10; // Reducir aún más el número de nubes
-            const cloudParts = 2;  // Menos partes por nube
+            // Create multiple clouds
+            for (let i = 0; i < 15; i++) {
+                const cloud = new THREE.Group();
+                const cloudParts = 5 + Math.floor(Math.random() * 10);
+                
+                for (let j = 0; j < cloudParts; j++) {
+                    const cloudPart = new THREE.Mesh(cloudGeometry, cloudMaterial);
+                    const scale = 10 + Math.random() * 10;
+                    cloudPart.scale.set(scale, scale * 0.5, scale * 0.7);
+                    cloudPart.position.set(
+                        (Math.random() - 0.5) * 30,
+                        (Math.random() - 0.5) * 10,
+                        (Math.random() - 0.5) * 30
+                    );
+                    cloudPart.rotation.y = Math.random() * Math.PI * 2;
+                    cloud.add(cloudPart);
+                }
+                
+                // Position clouds in the sky
+                cloud.position.set(
+                    (Math.random() - 0.5) * 10000,
+                    100 + Math.random() * 200,
+                    (Math.random() - 0.5) * 10000
+                );
+                
+                scene.add(cloud);
+            }
+        }
+        
+        // Create urban areas (cities and towns)
+        function createUrbanAreas() {
+            for (const area of worldConfig.urbanAreas) {
+                if (area.type === 'city') {
+                    // Provide default values for all parameters to prevent NaN
+                    const buildingCount = area.radius || 30; // Default to 30 buildings if radius is not defined
+                    const maxHeight = area.maxHeight || 100; // Default max height
+                    const spread = area.spread || 500; // Default spread
+                    createCity(area.x || 0, area.z || 0, buildingCount, maxHeight, spread);
+                } else {
+                    createTown(area.x || 0, area.z || 0, area.radius || 10);
+                }
+            }
             
-            for (let i = 0; i < cloudCount; i++) {
+            // Create clouds
+            const cloudParts = 5;
+            const cloudGeometry = new THREE.SphereGeometry(1, 8, 8);
+            const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+            
+            for (let i = 0; i < 20; i++) {
                 const cloud = new THREE.Group();
                 
                 for (let j = 0; j < cloudParts; j++) {
@@ -502,7 +912,7 @@
                 scene.add(cloud);
             }
             
-            // Crear ciudades y edificios
+            // Create buildings
             createBuildings();
         }
 
@@ -921,9 +1331,10 @@
                 const crownRadius = Math.random() * 3 + 2.5;
                 const crown = new THREE.Mesh(
                     new THREE.SphereGeometry(crownRadius, 12, 8),
-                    new THREE.MeshLambertMaterial({ 
+                    new THREE.MeshStandardMaterial({ 
                         color: new THREE.Color().setHSL(0.3, 0.7, 0.4 + Math.random() * 0.2),
-                        flatShading: false
+                        roughness: 0.9,
+                        metalness: 0.1
                     })
                 );
                 crown.position.y = trunkHeight + crownRadius * 0.3;
@@ -940,9 +1351,10 @@
                 const trunkHeight = Math.random() * 6 + 4;
                 const trunk = new THREE.Mesh(
                     new THREE.CylinderGeometry(0.3, 0.5, trunkHeight, 6),
-                    new THREE.MeshLambertMaterial({ 
+                    new THREE.MeshStandardMaterial({ 
                         color: 0x8B4513,
-                        flatShading: true
+                        roughness: 0.9,
+                        metalness: 0.1
                     })
                 );
                 trunk.position.y = trunkHeight / 2;
@@ -952,9 +1364,10 @@
                 const crownRadius = Math.random() * 3 + 2.5;
                 const crown = new THREE.Mesh(
                     new THREE.SphereGeometry(crownRadius, 8, 6),
-                    new THREE.MeshLambertMaterial({ 
+                    new THREE.MeshStandardMaterial({ 
                         color: new THREE.Color().setHSL(0.3, 0.7, 0.4 + Math.random() * 0.2),
-                        flatShading: true
+                        roughness: 0.9,
+                        metalness: 0.1
                     })
                 );
                 crown.position.y = trunkHeight + crownRadius * 0.3;
@@ -972,9 +1385,10 @@
                 const radius = Math.random() * 2 + 2;
                 const tree = new THREE.Mesh(
                     new THREE.ConeGeometry(radius, height, 5, 1),
-                    new THREE.MeshLambertMaterial({ 
+                    new THREE.MeshStandardMaterial({ 
                         color: new THREE.Color().setHSL(0.3, 0.7, 0.4 + Math.random() * 0.2),
-                        flatShading: true
+                        roughness: 0.9,
+                        metalness: 0.1
                     })
                 );
                 tree.position.y = height / 2;
