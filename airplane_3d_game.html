@@ -781,18 +781,26 @@
                     rampAngle + Math.PI/2
                 );
             }
-            for (let i = 0; i < cities.length; i++) {
-                for (let j = i + 1; j < cities.length; j++) {
+            
+            // Conectar ciudades principales entre sí
+            for (let i = 0; i < mainCities.length; i++) {
+                for (let j = i + 1; j < mainCities.length; j++) {
                     if (Math.random() > 0.3) continue; // No conectar todas
                     
-                    const cityA = cities[i];
-                    const cityB = cities[j];
-                    const midX = (cityA.x + cityB.x) / 2;
-                    const midZ = (cityA.z + cityB.z) / 2;
-                    const distance = Math.sqrt(Math.pow(cityB.x - cityA.x, 2) + Math.pow(cityB.z - cityA.z, 2));
-                    const angle = Math.atan2(cityB.z - cityA.z, cityB.x - cityA.x);
+                    const cityA = mainCities[i];
+                    const cityB = mainCities[j];
+                    const dx = cityB.x - cityA.x;
+                    const dz = cityB.z - cityA.z;
+                    const distance = Math.sqrt(dx * dx + dz * dz);
+                    const angle = Math.atan2(dz, dx);
                     
-                    createHighway(midX, midZ, distance, 25, angle);
+                    createHighway(
+                        cityA.x + dx * 0.5,
+                        cityA.z + dz * 0.5,
+                        distance,
+                        30, // Ancho de carretera secundaria
+                        angle + Math.PI/2
+                    );
                 }
             }
         }
