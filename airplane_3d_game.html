@@ -662,82 +662,123 @@
 
         // World configuration is now defined inline
         
-        // Create the world using the new layout system
+        // Create the world with optimized ground and fixed z-fighting
         function createWorld() {
-            // Create ground plane
-            const groundGeometry = new THREE.PlaneGeometry(
-                worldConfig.size * 2, 
-                worldConfig.size * 2
-            );
+            // Clear existing ground objects if any
+            const groundObjects = ['ground', 'runway', 'roads', 'water'];
+            scene.children = scene.children.filter(child => !groundObjects.includes(child.userData.type));
             
-            // Create a more detailed ground texture
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 512;
-            const context = canvas.getContext('2d');
+            // 1. Create base ground plane (lowest layer)
+            const groundGeometry = new THREE.PlaneGeometry(worldConfig.size * 2, worldConfig.size * 2, 1, 1);
             
-            // Draw grass texture
-            const grassPattern = context.createLinearGradient(0, 0, 512, 512);
-            grassPattern.addColorStop(0, '#7CFC00');
-            grassPattern.addColorStop(0.5, '#76EE00');
-            grassPattern.addColorStop(1, '#66CD00');
-            context.fillStyle = grassPattern;
-            context.fillRect(0, 0, 512, 512);
-            
-            // Add some noise for variation
-            const imageData = context.getImageData(0, 0, 512, 512);
-            const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                // Add subtle noise to the green channel
-                const noise = Math.random() * 30 - 15;
-                data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
-            }
-            context.putImageData(imageData, 0, 0);
-            
-            const groundTexture = new THREE.CanvasTexture(canvas);
-            groundTexture.wrapS = THREE.RepeatWrapping;
-            groundTexture.wrapT = THREE.RepeatWrapping;
-            groundTexture.repeat.set(20, 20);  // Tile the texture
-            
-            const groundMaterial = new THREE.MeshLambertMaterial({ 
-                map: groundTexture,
+            // Simple color material for better performance
+            const groundMaterial = new THREE.MeshStandardMaterial({
+                color: 0x4a7c59, // Dark green
+                roughness: 1.0,
+                metalness: 0.0,
                 side: THREE.DoubleSide
             });
             
             const ground = new THREE.Mesh(groundGeometry, groundMaterial);
             ground.rotation.x = -Math.PI / 2;
-            ground.position.y = -49;  // Ground level
+            ground.position.y = -50;  // Slightly below other objects
+            ground.receiveShadow = true;
+            ground.userData.type = 'ground';
             scene.add(ground);
             
-            // Create runway at the center
+            // 2. Create a grid helper for better spatial reference (temporary, can be removed later)
+            const gridHelper = new THREE.GridHelper(worldConfig.size * 2, 100, 0x555555, 0x333333);
+            gridHelper.position.y = -49.9;  // Just above the ground
+            gridHelper.userData.type = 'grid';
+            scene.add(gridHelper);
+            
+            // 3. Create runway with proper layering
             createRunway(0, 0, 200, 3000);
             
-            // Create urban areas (cities and towns)
-            createUrbanAreas();
+            // 4. Create water bodies next
+            createWaterBodies();
             
-            // Create natural features (rivers, lakes, forests)
-            createNaturalFeatures();
+            // 5. Create terrain features (hills, etc.)
+            createTerrainFeatures();
             
-            // Create road network
+            // 6. Create roads and paths
             createRoadNetwork();
             
-            // Add vegetation
+            // 7. Add urban areas
+            createUrbanAreas();
+            
+            // 8. Add vegetation and natural features
+            createNaturalFeatures();
             createScatteredVegetation();
             
-            // Create clouds
+            // 9. Add clouds (skybox would be better for performance)
             createClouds();
+            
+            console.log('World created with optimized ground and fixed z-fighting');
         }
         
-        // Create a runway with proper markings
+        // Create terrain features like hills and valleys
+        function createTerrainFeatures() {
+            // Create a few large hills/mountains
+            const hillCount = 5;
+            const hillGeometry = new THREE.SphereGeometry(1, 32, 32);
+            const hillMaterial = new THREE.MeshStandardMaterial({
+                color: 0x3a5f0b,
+                roughness: 1.0,
+                flatShading: true
+            });
+            
+            for (let i = 0; i < hillCount; i++) {
+                const size = 500 + Math.random() * 1000;
+                const hill = new THREE.Mesh(hillGeometry, hillMaterial);
+                
+                // Position hills away from the center
+                const angle = (i / hillCount) * Math.PI * 2;
+                const distance = 2000 + Math.random() * 3000;
+                const x = Math.cos(angle) * distance;
+                const z = Math.sin(angle) * distance;
+                
+                hill.scale.set(size, size * 0.3, size);
+                hill.position.set(x, -50 + (size * 0.3) / 2, z);
+                hill.userData.type = 'terrain';
+                
+                // Make sure hills don't interfere with the runway area
+                if (Math.abs(x) > 500 || Math.abs(z) > 500) {
+                    scene.add(hill);
+                }
+            }
+            
+            // Add some smaller terrain variations
+            const detailCount = 20;
+            const detailGeometry = new THREE.SphereGeometry(1, 16, 16);
+            
+            for (let i = 0; i < detailCount; i++) {
+                const size = 50 + Math.random() * 200;
+                const detail = new THREE.Mesh(detailGeometry, hillMaterial);
+                
+                const x = (Math.random() - 0.5) * worldConfig.size * 1.5;
+                const z = (Math.random() - 0.5) * worldConfig.size * 1.5;
+                
+                // Skip if too close to center (runway area)
+                if (Math.abs(x) < 500 && Math.abs(z) < 500) continue;
+                
+                detail.scale.set(size, size * 0.2, size);
+                detail.position.set(x, -50 + (size * 0.2) / 2, z);
+                detail.userData.type = 'terrain_detail';
+                scene.add(detail);
+            }
+        }
+        
+        // Create a runway with proper markings and z-fighting prevention
         function createRunway(x, z, width, length) {
-            // Create runway surface
+            // Create runway surface with a small offset to prevent z-fighting
             const runwayGeometry = new THREE.PlaneGeometry(width, length);
             
-            // Create runway texture with markings
+            // Create runway material with higher resolution texture
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
-            canvas.width = 256;
-            canvas.height = 2048;
+            canvas.width = 512;  // Higher resolution for better quality
+            canvas.height = 4096;
             
             // Dark gray background
             context.fillStyle = '#444444';
@@ -790,15 +831,33 @@
             texture.wrapT = THREE.RepeatWrapping;
             texture.repeat.set(1, 1);
             
-            const runwayMaterial = new THREE.MeshLambertMaterial({ 
+            const runwayMaterial = new THREE.MeshStandardMaterial({
                 map: texture,
+                roughness: 0.5,
+                metalness: 0.1,
                 side: THREE.DoubleSide
             });
             
+            // Create a thicker runway to prevent z-fighting
             const runway = new THREE.Mesh(runwayGeometry, runwayMaterial);
             runway.rotation.x = -Math.PI / 2;
-            runway.position.set(x, -48.5, z);  // Slightly above ground to prevent z-fighting
+            runway.position.set(x, -49.2, z);  // Slightly above ground to prevent z-fighting
+            runway.receiveShadow = true;
+            runway.userData.type = 'runway';
+            
+            // Add a thin border to the runway for better visibility
+            const borderGeometry = new THREE.BoxGeometry(width + 10, 1, length + 10);
+            const borderMaterial = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                roughness: 0.8,
+                metalness: 0.0
+            });
+            const border = new THREE.Mesh(borderGeometry, borderMaterial);
+            border.position.set(x, -49.1, z);
+            border.userData.type = 'runway_border';
+            
             scene.add(runway);
+            scene.add(border);
             
             return runway;
         }
@@ -864,8 +923,45 @@
                     (Math.random() - 0.5) * 10000
                 );
                 
+                // Store cloud reference for animation
+                cloud.userData = {
+                    speed: 0.05 + Math.random() * 0.1, // Random speed for each cloud
+                    direction: new THREE.Vector3(
+                        Math.random() * 0.1 - 0.05, // Random X direction
+                        0, // No vertical movement
+                        Math.random() * 0.1 - 0.05  // Random Z direction
+                    ).normalize()
+                };
+                
+                // Add to clouds array for animation
+                if (!window.clouds) window.clouds = [];
+                window.clouds.push(cloud);
+                
                 scene.add(cloud);
             }
+        }
+        
+        // Update cloud positions for animation
+        function updateClouds() {
+            if (!window.clouds || !window.clouds.length) return;
+            
+            const worldSize = worldConfig.size * 1.5;
+            
+            window.clouds.forEach(cloud => {
+                if (cloud && cloud.userData) {
+                    // Move cloud
+                    cloud.position.x += cloud.userData.direction.x * cloud.userData.speed;
+                    cloud.position.z += cloud.userData.direction.z * cloud.userData.speed;
+                    
+                    // Wrap around world boundaries
+                    if (Math.abs(cloud.position.x) > worldSize) {
+                        cloud.position.x = -cloud.position.x * 0.9;
+                    }
+                    if (Math.abs(cloud.position.z) > worldSize) {
+                        cloud.position.z = -cloud.position.z * 0.9;
+                    }
+                }
+            });
         }
         
         // Create urban areas (cities and towns)
@@ -1762,42 +1858,194 @@
         }
 
         function createCity(centerX, centerZ, buildingCount, maxHeight, spread) {
+            // Create a grid for building placement to prevent overlap
+            const gridSize = 50; // Minimum distance between buildings
+            const grid = {};
+            
+            // Helper function to check if a position is available
+            const isPositionAvailable = (x, z, size) => {
+                const gridX = Math.round(x / gridSize) * gridSize;
+                const gridZ = Math.round(z / gridSize) * gridSize;
+                return !grid[`${gridX},${gridZ}`];
+            };
+            
+            // Helper function to mark position as taken
+            const markPosition = (x, z, size) => {
+                const gridX = Math.round(x / gridSize) * gridSize;
+                const gridZ = Math.round(z / gridSize) * gridSize;
+                grid[`${gridX},${gridZ}`] = true;
+            };
+            
+            // Create buildings with LOD
             for (let i = 0; i < buildingCount; i++) {
-                const x = centerX + (Math.random() - 0.5) * spread;
-                const z = centerZ + (Math.random() - 0.5) * spread;
+                let x, z, attempts = 0;
+                const maxAttempts = 100;
+                let positionFound = false;
                 
+                // Try to find a non-overlapping position
+                while (!positionFound && attempts < maxAttempts) {
+                    x = centerX + (Math.random() - 0.5) * spread;
+                    z = centerZ + (Math.random() - 0.5) * spread;
+                    
+                    // Skip if too close to center (runway area)
+                    if (Math.abs(x) < 600 && Math.abs(z) < 600) {
+                        attempts++;
+                        continue;
+                    }
+                    
+                    if (isPositionAvailable(x, z, gridSize)) {
+                        positionFound = true;
+                        markPosition(x, z, gridSize);
+                    }
+                    attempts++;
+                }
+                
+                if (!positionFound) continue; // Skip if no position found
+                
+                // Create building with LOD
                 const width = Math.random() * 40 + 20;
                 const depth = Math.random() * 40 + 20;
                 const height = Math.random() * maxHeight + 15;
                 
-                const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
-                const buildingMaterial = new THREE.MeshLambertMaterial({
-                    color: new THREE.Color().setHSL(0, 0, Math.random() * 0.4 + 0.3)
-                });
+                // Create LOD object
+                const buildingLOD = new THREE.LOD();
                 
+                // High detail (close)
+                const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
+                const buildingMaterial = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color().setHSL(0, 0, Math.random() * 0.4 + 0.3),
+                    roughness: 0.7,
+                    metalness: 0.3
+                });
                 const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
-                building.position.set(x, -49.5 + height/2, z);
-                scene.add(building);
+                
+                // Medium detail (mid-range)
+                const mediumGeometry = new THREE.BoxGeometry(width, height, depth, 1, 1, 1);
+                const mediumMaterial = new THREE.MeshStandardMaterial({
+                    color: buildingMaterial.color,
+                    wireframe: false,
+                    roughness: 0.8,
+                    metalness: 0.2
+                });
+                const mediumBuilding = new THREE.Mesh(mediumGeometry, mediumMaterial);
+                
+                // Low detail (far)
+                const lowGeometry = new THREE.BoxGeometry(width, height, depth, 1, 1, 1);
+                const lowMaterial = new THREE.MeshBasicMaterial({
+                    color: buildingMaterial.color,
+                    wireframe: false
+                });
+                const lowBuilding = new THREE.Mesh(lowGeometry, lowMaterial);
+                
+                // Add levels to LOD
+                buildingLOD.addLevel(building, 0);     // High detail up to 500 units
+                buildingLOD.addLevel(mediumBuilding, 500);  // Medium detail up to 1000 units
+                buildingLOD.addLevel(lowBuilding, 1000);    // Low detail beyond 1000 units
+                
+                // Position the building
+                buildingLOD.position.set(x, -49.5 + height/2, z);
+                buildingLOD.castShadow = true;
+                buildingLOD.receiveShadow = true;
+                buildingLOD.userData.type = 'building';
+                
+                scene.add(buildingLOD);
             }
         }
 
         function createTown(centerX, centerZ, houseCount) {
+            // Create a grid for house placement to prevent overlap
+            const gridSize = 30; // Minimum distance between houses
+            const grid = {};
+            
+            // Helper function to check if a position is available
+            const isPositionAvailable = (x, z) => {
+                const gridX = Math.round(x / gridSize) * gridSize;
+                const gridZ = Math.round(z / gridSize) * gridSize;
+                return !grid[`${gridX},${gridZ}`];
+            };
+            
+            // Helper function to mark position as taken
+            const markPosition = (x, z) => {
+                const gridX = Math.round(x / gridSize) * gridSize;
+                const gridZ = Math.round(z / gridSize) * gridSize;
+                grid[`${gridX},${gridZ}`] = true;
+            };
+            
+            // Create houses with LOD
             for (let i = 0; i < houseCount; i++) {
-                const x = centerX + (Math.random() - 0.5) * 250;
-                const z = centerZ + (Math.random() - 0.5) * 250;
+                let x, z, attempts = 0;
+                const maxAttempts = 100;
+                let positionFound = false;
+                
+                // Try to find a non-overlapping position
+                while (!positionFound && attempts < maxAttempts) {
+                    x = centerX + (Math.random() - 0.5) * 500; // Larger spread for towns
+                    z = centerZ + (Math.random() - 0.5) * 500;
+                    
+                    // Skip if too close to center (runway area)
+                    if (Math.abs(x) < 600 && Math.abs(z) < 600) {
+                        attempts++;
+                        continue;
+                    }
+                    
+                    if (isPositionAvailable(x, z)) {
+                        positionFound = true;
+                        markPosition(x, z);
+                    }
+                    attempts++;
+                }
+                
+                if (!positionFound) continue; // Skip if no position found
                 
                 const width = Math.random() * 18 + 12;
                 const depth = Math.random() * 18 + 12;
                 const height = Math.random() * 12 + 8;
                 
                 const houseColors = [0xDEB887, 0xF0E68C, 0xFFA07A, 0xD3D3D3, 0xF5DEB3, 0xFFB6C1];
-                const houseMaterial = new THREE.MeshLambertMaterial({
-                    color: houseColors[Math.floor(Math.random() * houseColors.length)]
-                });
+                const houseColor = houseColors[Math.floor(Math.random() * houseColors.length)];
                 
-                const house = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), houseMaterial);
-                house.position.set(x, -49.5 + height/2, z);
-                scene.add(house);
+                // Create LOD object for the house
+                const houseLOD = new THREE.LOD();
+                
+                // High detail (close)
+                const houseGeometry = new THREE.BoxGeometry(width, height, depth);
+                const houseMaterial = new THREE.MeshStandardMaterial({
+                    color: houseColor,
+                    roughness: 0.8,
+                    metalness: 0.1
+                });
+                const house = new THREE.Mesh(houseGeometry, houseMaterial);
+                
+                // Medium detail (mid-range)
+                const mediumGeometry = new THREE.BoxGeometry(width, height, depth, 1, 1, 1);
+                const mediumMaterial = new THREE.MeshStandardMaterial({
+                    color: houseColor,
+                    wireframe: false,
+                    roughness: 0.9,
+                    metalness: 0.0
+                });
+                const mediumHouse = new THREE.Mesh(mediumGeometry, mediumMaterial);
+                
+                // Low detail (far)
+                const lowGeometry = new THREE.BoxGeometry(width, height, depth, 1, 1, 1);
+                const lowMaterial = new THREE.MeshBasicMaterial({
+                    color: houseColor,
+                    wireframe: false
+                });
+                const lowHouse = new THREE.Mesh(lowGeometry, lowMaterial);
+                
+                // Add levels to LOD
+                houseLOD.addLevel(house, 0);        // High detail up to 300 units
+                houseLOD.addLevel(mediumHouse, 300); // Medium detail up to 600 units
+                houseLOD.addLevel(lowHouse, 600);    // Low detail beyond 600 units
+                
+                // Position the house
+                houseLOD.position.set(x, -49.5 + height/2, z);
+                houseLOD.castShadow = true;
+                houseLOD.receiveShadow = true;
+                houseLOD.userData.type = 'house';
+                
+                scene.add(houseLOD);
             }
         }
 
@@ -2091,41 +2339,54 @@
         const targetFPS = 60;
         const frameTime = 1000 / targetFPS;
         
-        // Loop de animación optimizado al máximo
+        // Loop de animación optimizado con LOD y frustum culling
         function animate(currentTime = 0) {
             requestAnimationFrame(animate);
             
             // Control de FPS mejorado
             const deltaTime = currentTime - lastTime;
-            if (deltaTime < frameTime) return;
-            lastTime = currentTime - (deltaTime % frameTime);
+            if (deltaTime < 1000 / targetFPS) return;
+            lastTime = currentTime - (deltaTime % (1000 / targetFPS));
             
-            // Actualizar física y cámara
-            updateAirplane();
-            updateCamera();
+            // Actualizar física del avión
+            if (airplane) {
+                updateAirplane();
+                
+                // Actualizar cámara basada en la nueva posición del avión
+                updateCamera();
+                
+                // Actualizar UI
+                const currentSpeed = Math.sqrt(
+                    velocity.x * velocity.x + 
+                    velocity.y * velocity.y + 
+                    velocity.z * velocity.z
+                ) * 100;
+                updateUI(currentSpeed);
+                
+                // Actualizar LODs basado en la distancia a la cámara
+                LODManager.updateLODs(camera);
+            }
+            
+            // Actualizar nubes (con optimización de rendimiento)
+            updateClouds();
             
             // Actualizar frustum culling
             FrustumCuller.updateFrustum(camera);
-            
-            // Actualizar LODs
-            LODManager.updateLODs(camera);
-            
-            // Actualizar visibilidad basada en el frustum
             FrustumCuller.updateVisibility(scene);
             
-            // Renderizar solo si es necesario
-            if (renderer && scene && camera) {
-                // Limpiar solo el área necesaria
-                renderer.clear(true, true, true);
-                
-                // Renderizar con configuración óptima
-                renderer.render(scene, camera);
-                
-                // Forzar la recolección de basura periódicamente
-                if (Math.random() < 0.01) {
-                    window.performance?.memory?.jsHeapSizeLimit > 0 && 
-                    window.gc?.();
-                }
+            // Renderizar escena con optimizaciones
+            renderer.shadowMap.needsUpdate = false; // Reducir actualizaciones de sombras
+            renderer.render(scene, camera);
+            
+            // Actualizar estadísticas de rendimiento si están habilitadas
+            if (window.stats) {
+                window.stats.update();
+            }
+            
+            // Forzar la recolección de basura periódicamente
+            if (Math.random() < 0.01) {
+                window.performance?.memory?.jsHeapSizeLimit > 0 && 
+                window.gc?.();
             }
         }
 
